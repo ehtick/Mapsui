@@ -5,7 +5,7 @@ namespace Mapsui.Rendering.Skia.Extensions;
 
 public static class ViewportExtensions
 {
-    public static SKMatrix ToSKMatrix(this IViewport viewport)
+    public static SKMatrix ToSKMatrix(this Viewport viewport)
     {
         var mapCenterX = (float)viewport.Width * 0.5f;
         var mapCenterY = (float)viewport.Height * 0.5f;
@@ -13,7 +13,7 @@ public static class ViewportExtensions
 
         var matrix = SKMatrix.CreateScale(invertedResolution, invertedResolution, mapCenterX, mapCenterY);
         matrix = SKMatrix.Concat(matrix, SKMatrix.CreateScale(1, -1, 0, -mapCenterY)); // As a consequence images will be up side down :(
-        if (viewport.State.IsRotated()) matrix = SKMatrix.Concat(matrix, SKMatrix.CreateRotationDegrees((float)-viewport.Rotation));
+        if (viewport.IsRotated()) matrix = SKMatrix.Concat(matrix, SKMatrix.CreateRotationDegrees((float)-viewport.Rotation));
         matrix = SKMatrix.Concat(matrix, SKMatrix.CreateTranslation((float)-viewport.CenterX, (float)-viewport.CenterY));
         return matrix;
     }
@@ -21,8 +21,8 @@ public static class ViewportExtensions
     /// <summary> Converts the Extent of the Viewport to a SKRect </summary>
     /// <param name="viewport">viewport</param>
     /// <returns>SkRect</returns>
-    public static SKRect ToSkiaRect(this IReadOnlyViewport viewport)
+    public static SKRect ToSkiaRect(this Viewport viewport)
     {
-        return viewport.WorldToScreen(viewport.State.GetExtent()).ToSkia();
+        return viewport.WorldToScreen(viewport.ToExtent()).ToSkia();
     }
 }

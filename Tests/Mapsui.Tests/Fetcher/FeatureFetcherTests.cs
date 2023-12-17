@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using Mapsui.Layers;
 using Mapsui.Providers;
 using NUnit.Framework;
+using NUnit.Framework.Legacy;
 
 namespace Mapsui.Tests.Fetcher;
 
@@ -29,7 +30,7 @@ public class FeatureFetcherTests
                 notifications.Add(layer.Busy);
             }
         };
-        var fetchInfo = new FetchInfo(extent, 1, null, ChangeType.Discrete);
+        var fetchInfo = new FetchInfo(new MSection(extent, 1), null, ChangeType.Discrete);
 
         // act
         layer.RefreshData(fetchInfo);
@@ -42,8 +43,8 @@ public class FeatureFetcherTests
                 // just wait until we have two
             }
         });
-        Assert.IsTrue(notifications[0]);
-        Assert.IsFalse(notifications[1]);
+        ClassicAssert.IsTrue(notifications[0]);
+        ClassicAssert.IsFalse(notifications[1]);
     }
 
     private static IEnumerable<IFeature> GenerateRandomPoints(MRect envelope, int count)

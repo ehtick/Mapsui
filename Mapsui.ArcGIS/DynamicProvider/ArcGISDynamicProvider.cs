@@ -102,8 +102,7 @@ public class ArcGISDynamicProvider : IProvider, IProjectingProvider
         if (ArcGisDynamicCapabilities.layers == null)
             return Enumerable.Empty<IFeature>();
 
-        IViewport viewport = fetchInfo.ToViewport();
-        var (success, raster) = await TryGetMapAsync(viewport);
+        var (success, raster) = await TryGetMapAsync(fetchInfo.Section);
         if (success)
         {
             return new IFeature[] { new RasterFeature(raster) };
@@ -136,15 +135,15 @@ public class ArcGISDynamicProvider : IProvider, IProjectingProvider
     /// <summary>
     /// Retrieves the bitmap from ArcGIS Dynamic service
     /// </summary>
-    public async Task<(bool Success, MRaster? Raster)> TryGetMapAsync(IViewport viewport)
+    public async Task<(bool Success, MRaster? Raster)> TryGetMapAsync(MSection section)
     {
         int width;
         int height;
 
         try
         {
-            width = Convert.ToInt32(viewport.Width);
-            height = Convert.ToInt32(viewport.Height);
+            width = Convert.ToInt32(section.ScreenWidth);
+            height = Convert.ToInt32(section.ScreenHeight);
         }
         catch (OverflowException ex)
         {
@@ -154,7 +153,7 @@ public class ArcGISDynamicProvider : IProvider, IProjectingProvider
 
         try
         {
-            var uri = new Uri(GetRequestUrl(viewport.Extent, width, height));
+            var uri = new Uri(GetRequestUrl(section.Extent, width, height));
             var bytes = _persistentCache?.Find(uri.ToString());
             if (bytes == null)
             {
@@ -171,15 +170,15 @@ public class ArcGISDynamicProvider : IProvider, IProjectingProvider
 
                 using var client = new HttpClient(handler) { Timeout = TimeSpan.FromMilliseconds(_timeOut) };
 
-                using var response = await client.GetAsync(uri);
-                using var readAsStreamAsync = await response.Content.ReadAsStreamAsync();
+                using var response = await client.GetAsync(uri).ConfigureAwait(false);
+                using var readAsStreamAsync = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
                 bytes = BruTile.Utilities.ReadFully(readAsStreamAsync);
                 _persistentCache?.Add(uri.ToString(), bytes);
             }
 
-            if (viewport.Extent != null)
+            if (section.Extent != null)
             {
-                var raster = new MRaster(bytes, viewport.Extent);
+                var raster = new MRaster(bytes, section.Extent);
                 return (true, raster);
             }
 

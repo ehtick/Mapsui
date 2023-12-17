@@ -26,22 +26,23 @@ public sealed partial class MainPageLarge : ContentPage, IDisposable
         Mapsui.Tests.Common.Utilities.LoadAssembly();
     }
 
-    IEnumerable<ISampleBase> allSamples;
-    Func<object?, EventArgs, bool>? clicker;
-    private CancellationTokenSource? gpsCancelation;
+    readonly IEnumerable<ISampleBase> _allSamples;
+    Func<object?, EventArgs, bool>? _clicker;
+    private CancellationTokenSource? _gpsCancelation;
+    private bool _updateLocation;
 
     public MainPageLarge()
     {
         InitializeComponent();
 
         // nullable warning workaround
-        var test = this.listView ?? throw new InvalidOperationException();
-        var test2 = this.featureInfo ?? throw new InvalidOperationException();
+        var test = listView ?? throw new InvalidOperationException();
+        var test2 = featureInfo ?? throw new InvalidOperationException();
 
-        allSamples = AllSamples.GetSamples() ?? new List<ISampleBase>();
+        _allSamples = AllSamples.GetSamples() ?? new List<ISampleBase>();
 
-        var categories = allSamples.Select(s => s.Category).Distinct().OrderBy(c => c);
-        picker!.ItemsSource = categories.ToList<string>();
+        var categories = _allSamples.Select(s => s.Category).Distinct().OrderBy(c => c);
+        picker!.ItemsSource = categories.ToList();
         picker.SelectedIndexChanged += PickerSelectedIndexChanged;
         picker.SelectedItem = "Forms";
 
@@ -69,7 +70,7 @@ public sealed partial class MainPageLarge : ContentPage, IDisposable
         mapView.Refresh();
     }
 
-    private void MapView_Info(object? sender, UI.MapInfoEventArgs? e)
+    private void MapView_Info(object? sender, MapInfoEventArgs? e)
     {
         featureInfo.Text = $"Click Info:";
 
@@ -86,14 +87,14 @@ public sealed partial class MainPageLarge : ContentPage, IDisposable
                 }
             }
 
-            mapView.Refresh();
+            mapView.RefreshGraphics();
         }
     }
 
     private void FillListWithSamples()
     {
         var selectedCategory = picker.SelectedItem?.ToString() ?? "";
-        listView.ItemsSource = allSamples.Where(s => s.Category == selectedCategory).Select(x => x.Name);
+        listView.ItemsSource = _allSamples.Where(s => s.Category == selectedCategory).Select(x => x.Name);
     }
 
     private void PickerSelectedIndexChanged(object? sender, EventArgs e)
@@ -103,7 +104,7 @@ public sealed partial class MainPageLarge : ContentPage, IDisposable
 
     private void OnMapClicked(object? sender, MapClickedEventArgs e)
     {
-        e.Handled = clicker?.Invoke(sender as MapView, e) ?? false;
+        e.Handled = _clicker?.Invoke(sender as MapView, e) ?? false;
     }
 
     void OnSelection(object sender, SelectedItemChangedEventArgs e)
@@ -114,7 +115,7 @@ public sealed partial class MainPageLarge : ContentPage, IDisposable
         }
 
         var sampleName = e.SelectedItem.ToString();
-        var sample = allSamples.FirstOrDefault(x => x.Name == sampleName);
+        var sample = _allSamples.FirstOrDefault(x => x.Name == sampleName);
 
         if (sample != null)
         {
@@ -125,9 +126,14 @@ public sealed partial class MainPageLarge : ContentPage, IDisposable
 
         }
 
-        clicker = null;
-        if (sample is IFormsSample formsSample)
-            clicker = formsSample.OnClick;
+        _clicker = null;
+        if (sample is IMapViewSample formsSample)
+        {
+            _clicker = formsSample.OnClick;
+            _updateLocation = formsSample.UpdateLocation;
+        }
+        else
+            _updateLocation = true;
 
         listView.SelectedItem = null;
     }
@@ -156,12 +162,12 @@ public sealed partial class MainPageLarge : ContentPage, IDisposable
     {
         try
         {
-            this.gpsCancelation?.Dispose();
-            this.gpsCancelation = new CancellationTokenSource();
+            _gpsCancelation?.Dispose();
+            _gpsCancelation = new CancellationTokenSource();
 
             await Task.Run(async () =>
             {
-                while (!gpsCancelation.IsCancellationRequested)
+                while (!_gpsCancelation.IsCancellationRequested)
                 {
                     var request = new GeolocationRequest(GeolocationAccuracy.Medium, TimeSpan.FromSeconds(10));
 #if __MAUI__ // WORKAROUND for Preview 11 will be fixed in Preview 13 https://github.com/dotnet/maui/issues/3597
@@ -173,7 +179,7 @@ public sealed partial class MainPageLarge : ContentPage, IDisposable
 #else
                     await Device.InvokeOnMainThreadAsync(async () => {
 #endif
-                        var location = await Geolocation.GetLocationAsync(request, this.gpsCancelation.Token)
+                        var location = await Geolocation.GetLocationAsync(request, _gpsCancelation.Token)
                             .ConfigureAwait(false);
                         if (location != null)
                         {
@@ -183,7 +189,7 @@ public sealed partial class MainPageLarge : ContentPage, IDisposable
 
                     await Task.Delay(200).ConfigureAwait(false);
                 }
-            }, gpsCancelation.Token).ConfigureAwait(false);
+            }, _gpsCancelation.Token).ConfigureAwait(false);
         }
         catch (Exception e)
         {
@@ -193,7 +199,7 @@ public sealed partial class MainPageLarge : ContentPage, IDisposable
 
     public void StopGPS()
     {
-        this.gpsCancelation?.Cancel();
+        _gpsCancelation?.Cancel();
     }
 
     /// <summary>
@@ -205,12 +211,16 @@ public sealed partial class MainPageLarge : ContentPage, IDisposable
     {
         try
         {
+            // check if I should update location
+            if (!_updateLocation)
+                return;
+
             await Application.Current?.Dispatcher?.DispatchAsync(() =>
             {
-                mapView?.MyLocationLayer.UpdateMyLocation(new UI.Maui.Position(e.Latitude, e.Longitude));
+                mapView?.MyLocationLayer.UpdateMyLocation(new Position(e.Latitude, e.Longitude));
                 if (e.Course != null)
                 {
-                    mapView?.MyLocationLayer.UpdateMyDirection(e.Course.Value, mapView?.Viewport.Rotation ?? 0);
+                    mapView?.MyLocationLayer.UpdateMyDirection(e.Course.Value, mapView?.Map.Navigator.Viewport.Rotation ?? 0);
                 }
 
                 if (e.Speed != null)
@@ -228,6 +238,6 @@ public sealed partial class MainPageLarge : ContentPage, IDisposable
 
     public void Dispose()
     {
-        ((IDisposable?)gpsCancelation)?.Dispose();
+        ((IDisposable?)_gpsCancelation)?.Dispose();
     }
 }

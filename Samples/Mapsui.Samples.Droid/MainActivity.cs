@@ -1,7 +1,3 @@
-
-
-#nullable enable
-
 using System;
 using System.IO;
 using System.Linq;
@@ -17,7 +13,6 @@ using Mapsui.Samples.Common;
 using Mapsui.Samples.Common.Extensions;
 using Mapsui.Samples.Common.Maps;
 using Mapsui.Samples.CustomWidget;
-using Mapsui.UI;
 using Mapsui.UI.Android;
 using Mapsui.Samples.Common.Maps.DataFormats;
 
@@ -32,9 +27,7 @@ public class MainActivity : AppCompatActivity
         Mapsui.Tests.Common.Utilities.LoadAssembly();
     }
 
-    private LinearLayout? _popup;
     private MapControl? _mapControl;
-    private TextView? _textView;
 
     protected override void OnCreate(Android.OS.Bundle? savedInstanceState)
     {
@@ -47,15 +40,12 @@ public class MainActivity : AppCompatActivity
 
         _mapControl = FindViewById<MapControl>(Resource.Id.mapcontrol) ?? throw new NullReferenceException();
         _mapControl.Map = MbTilesSample.CreateMap();
-        _mapControl.Info += MapOnInfo;
-        _mapControl.Map.RotationLock = true;
+        _mapControl.Map.Navigator.RotationLock = true;
         _mapControl.UnSnapRotationDegrees = 20;
         _mapControl.ReSnapRotationDegrees = 5;
         _mapControl.Renderer.WidgetRenders[typeof(CustomWidget.CustomWidget)] = new CustomWidgetSkiaRenderer();
 
         var relativeLayout = FindViewById<RelativeLayout>(Resource.Id.mainLayout) ?? throw new NullReferenceException(); ;
-        _popup?.Dispose();
-        relativeLayout.AddView(_popup = CreatePopup());
         _mapControl.Map.Layers.Clear();
         var sample = new MbTilesOverlaySample();
 
@@ -141,87 +131,5 @@ public class MainActivity : AppCompatActivity
         }
 
         return base.OnOptionsItemSelected(item);
-    }
-
-    protected override void Dispose(bool disposing)
-    {
-        if (disposing)
-        {
-            _popup?.Dispose();
-            _popup = null;
-            _textView?.Dispose();
-            _textView = null;
-        }
-
-        base.Dispose(disposing);
-    }
-
-    private LinearLayout CreatePopup()
-    {
-        var linearLayout = new LinearLayout(this);
-        linearLayout.AddView(CreateTextView());
-        linearLayout.SetPadding(5, 5, 5, 5);
-        linearLayout.SetBackgroundColor(Color.DarkGray);
-        linearLayout.Visibility = ViewStates.Gone;
-        return linearLayout;
-    }
-
-    private TextView CreateTextView()
-    {
-        _textView?.Dispose();
-        _textView = new TextView(this)
-        {
-            TextSize = 16,
-            Text = "Native Android",
-            LayoutParameters = new RelativeLayout.LayoutParams(
-                ViewGroup.LayoutParams.WrapContent,
-                ViewGroup.LayoutParams.WrapContent)
-        };
-        _textView.SetPadding(3, 3, 3, 3);
-        return _textView;
-    }
-
-    private void MapOnInfo(object? sender, MapInfoEventArgs args)
-    {
-        if (args.MapInfo?.Feature != null)
-        {
-            ShowPopup(args);
-        }
-        else
-        {
-            if (_popup != null && _popup.Visibility != ViewStates.Gone)
-                _popup.Visibility = ViewStates.Gone;
-        }
-    }
-
-    private void ShowPopup(MapInfoEventArgs args)
-    {
-        if (args.MapInfo?.Feature is IFeature geometryFeature)
-        {
-            // Position on click position:
-            // var screenPositionInPixels = args.MapInfo.ScreenPosition;
-
-            if (_mapControl == null)
-                return;
-
-            if (_popup == null)
-                return;
-
-            if (geometryFeature.Extent == null)
-                return;
-
-            // Or position on feature position: 
-            var screenPosition = _mapControl.Viewport.WorldToScreen(geometryFeature.Extent.Centroid);
-            var screenPositionInPixels = _mapControl.ToPixels(screenPosition);
-
-            _popup.SetX((float)screenPositionInPixels.X);
-            _popup.SetY((float)screenPositionInPixels.Y);
-
-            _popup.Visibility = ViewStates.Visible;
-            if (_textView != null)
-            {
-                _textView.Text = geometryFeature.ToDisplayText();
-            }
-        }
     }
 }

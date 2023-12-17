@@ -1,5 +1,6 @@
-﻿using System.Collections.Generic;
-using System.ComponentModel;
+﻿using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using BruTile.Cache;
 using Mapsui.Fetcher;
 using Mapsui.Layers;
@@ -8,17 +9,22 @@ using Mapsui.Rendering;
 using Mapsui.Tiling.Fetcher;
 using Mapsui.Tiling.Provider;
 using Mapsui.Tiling.Rendering;
-using Mapsui.Widgets;
 
 namespace Mapsui.Tiling.Layers;
 
-public class RasterizingTileLayer : TileLayer, ISourceLayer, IAsyncDataFetcher
+/// <summary>
+/// Rasterizing Tile Layer. A Layer that Rasterizes and Tiles the Layer. For Faster Performance.
+/// It recreates the Tiles if Data is changed.
+/// </summary>
+public class RasterizingTileLayer : TileLayer, ISourceLayer, IAsyncDataFetcher, ILayerFeatureInfo
 {
+    private MRect? _currentExtent;
+    private double? _currentResolution;
+
     /// <summary>
     ///     Creates a RasterizingTileLayer which rasterizes a layer for performance
     /// </summary>
     /// <param name="layer">The Layer to be rasterized</param>
-    /// <param name="renderResolutionMultiplier"></param>
     /// <param name="rasterizer">Rasterizer to use. null will use the default</param>
     /// <param name="pixelDensity"></param>
     /// <param name="minTiles">Minimum number of tiles to cache</param>
@@ -32,7 +38,6 @@ public class RasterizingTileLayer : TileLayer, ISourceLayer, IAsyncDataFetcher
     /// <param name="renderFormat">Format to Render To</param>
     public RasterizingTileLayer(
         ILayer layer,
-        double renderResolutionMultiplier = 1,
         IRenderer? rasterizer = null,
         float pixelDensity = 1,
         int minTiles = 200,
@@ -44,16 +49,38 @@ public class RasterizingTileLayer : TileLayer, ISourceLayer, IAsyncDataFetcher
         IPersistentCache<byte[]>? persistentCache = null,
         IProjection? projection = null,
         RenderFormat renderFormat = RenderFormat.Png) : base(
-        new RasterizingTileProvider(layer, renderResolutionMultiplier, rasterizer, pixelDensity, persistentCache, projection, renderFormat),
+        new RasterizingTileProvider(layer, rasterizer, pixelDensity, persistentCache, projection, renderFormat),
         minTiles,
         maxTiles,
         dataFetchStrategy,
-        renderFetchStrategy,
+        renderFetchStrategy ?? new TilingRenderFetchStrategy(null),
         minExtraTiles,
         maxExtraTiles)
     {
         SourceLayer = layer;
+        Name = layer.Name;
+        SourceLayer.DataChanged += (s, e) =>
+        {
+            ClearCache();
+            DataHasChanged();
+            if (_currentExtent != null && _currentResolution != null)
+            {
+                RefreshData(new FetchInfo(new MSection(_currentExtent, _currentResolution.Value)));
+            }
+        };
+    }
+
+    public override IEnumerable<IFeature> GetFeatures(MRect extent, double resolution)
+    {
+        _currentExtent = extent;
+        _currentResolution = resolution;
+        return base.GetFeatures(extent, resolution);
     }
 
     public ILayer SourceLayer { get; }
+    private RasterizingTileProvider RasterizingTileProvider => ((RasterizingTileProvider)TileSource);
+    public Task<IDictionary<string, IEnumerable<IFeature>>> GetFeatureInfoAsync(Viewport viewport, double screenX, double screenY)
+    {
+        return RasterizingTileProvider.GetFeatureInfoAsync(viewport, screenX, screenY);
+    }
 }

@@ -1,6 +1,7 @@
-﻿using Mapsui.Projections;
+﻿using Mapsui.Layers;
+using Mapsui.Projections;
+using Mapsui.Styles;
 using Mapsui.Tiling;
-using Mapsui.UI;
 using System.Threading.Tasks;
 
 namespace Mapsui.Samples.Common.Maps.Navigation;
@@ -16,15 +17,18 @@ public class KeepCenterInMapSample : ISample
         map.Layers.Add(OpenStreetMap.CreateTileLayer());
 
         // This is the default limiter. This limiter ensures that the center 
-        // of the viewport always is within the extent. When no PanLimits are
-        // specified the Map.Extent is used. In this sample the extent of
-        // Madagaskar is used. In such a scenario it makes sense to also limit
-        // the top ZoomLimit.
+        // of the viewport always is within the PanBounds. When no OverridePanBounds
+        // is specified the Navigator uses the Map.Extent as default. In this sample
+        // the extent of adagaskar is used. When the PanBounds are limited it usually makes
+        // sense to also limit the ZoomBounds.
 
-        var extent = GetLimitsOfMadagaskar();
-        map.Limiter.PanLimits = extent;
-        map.Limiter.ZoomLimits = new MinMax(0.15, 2500);
-        map.Home = n => n.NavigateTo(extent);
+        var panBounds = GetLimitsOfMadagaskar();
+        map.Layers.Add(CreatePanBoundsLayer(panBounds));
+
+        map.Navigator.OverridePanBounds = panBounds;
+        map.Navigator.OverrideZoomBounds = new MMinMax(0.15, 2500);
+        map.Navigator.ZoomToBox(panBounds);
+
         return Task.FromResult(map);
     }
 
@@ -34,4 +38,15 @@ public class KeepCenterInMapSample : ISample
         var (maxX, maxY) = SphericalMercator.FromLonLat(52.5, -11.6);
         return new MRect(minX, minY, maxX, maxY);
     }
+
+    public static MemoryLayer CreatePanBoundsLayer(MRect panBounds)
+    {
+        // This layer is only for visualizing the pan bounds. It is not needed for the limiter.
+        return new MemoryLayer("PanBounds")
+        {
+            Features = new[] { new RectFeature(panBounds) },
+            Style = new VectorStyle() { Fill = null, Outline = new Pen(Color.Red, 3) { PenStyle = PenStyle.Dot } }
+        };
+    }
+
 }

@@ -1,15 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using ConcurrentCollections;
-using Mapsui.Fetcher;
 using Mapsui.Styles;
+using Mapsui.Utilities;
 
 namespace Mapsui.Layers;
 
 public class WritableLayer : BaseLayer
 {
-    private readonly ConcurrentHashSet<IFeature> _cache = new();
+    private readonly ConcurrentHashSet<IFeature> _cache = [];
 
     public override IEnumerable<IFeature> GetFeatures(MRect? box, double resolution)
     {

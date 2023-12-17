@@ -7,10 +7,10 @@ using Mapsui.Widgets;
 
 namespace Mapsui.Rendering;
 
-public interface IRenderer : IRenderInfo
+public interface IRenderer : IRenderInfo, IDisposable
 {
-    void Render(object target, IReadOnlyViewport viewport, IEnumerable<ILayer> layers, IEnumerable<IWidget> widgets, Color? background = null);
-    MemoryStream RenderToBitmapStream(IReadOnlyViewport viewport, IEnumerable<ILayer> layers,
+    void Render(object target, Viewport viewport, IEnumerable<ILayer> layers, IEnumerable<IWidget> widgets, Color? background = null);
+    MemoryStream RenderToBitmapStream(Viewport viewport, IEnumerable<ILayer> layers,
         Color? background = null, float pixelDensity = 1, IEnumerable<IWidget>? widgets = null, RenderFormat renderFormat = RenderFormat.Png);
     IRenderCache RenderCache { get; }
     IDictionary<Type, IWidgetRenderer> WidgetRenders { get; }

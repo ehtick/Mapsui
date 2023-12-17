@@ -3,13 +3,13 @@ using System.Collections.Generic;
 
 namespace Mapsui;
 
-public class MRect
+public class MRect : IEquatable<MRect>
 {
     public MRect(double minX, double minY, double maxX, double maxY)
     {
         Min = new MPoint(minX, minY);
         Max = new MPoint(maxX, maxY);
-        EnforceMinMax();
+        SwapMinAndMaxIfNeeded();
     }
 
     public MRect(MRect rect) : this(rect.Min.X, rect.Min.Y, rect.Max.X, rect.Max.Y) { }
@@ -90,7 +90,7 @@ public class MRect
         return Min.X <= r.Min.X && Min.Y <= r.Min.Y && Max.X >= r.Max.X && Max.Y >= r.Max.Y;
     }
 
-    protected bool Equals(MRect? other)
+    public bool Equals(MRect? other)
     {
         if (other == null)
             return false;
@@ -111,7 +111,7 @@ public class MRect
     public MRect Grow(double amountInX, double amountInY)
     {
         var grownBox = new MRect(Min.X - amountInX, Min.Y - amountInY, Max.X + amountInX, MaxY + amountInY);
-        EnforceMinMax();
+        grownBox.SwapMinAndMaxIfNeeded();
         return grownBox;
     }
 
@@ -120,10 +120,10 @@ public class MRect
     {
         if (rect is null) return false;
 
-        if (rect.Max.X < Min.X) return false;
-        if (rect.Max.Y < Min.Y) return false;
-        if (rect.Min.X > Max.X) return false;
-        if (rect.Min.Y > Max.Y) return false;
+        if (rect.Max.X <= Min.X) return false;
+        if (rect.Max.Y <= Min.Y) return false;
+        if (rect.Min.X >= Max.X) return false;
+        if (rect.Min.Y >= Max.Y) return false;
 
         return true;
     }
@@ -179,7 +179,7 @@ public class MRect
         return quad.Rotate(degrees, center.X, center.Y);
     }
 
-    private void EnforceMinMax()
+    private void SwapMinAndMaxIfNeeded()
     {
         if (Min.X > Max.X)
         {
@@ -212,7 +212,7 @@ public class MRect
             return true;
         }
 
-        if (obj.GetType() != this.GetType())
+        if (obj.GetType() != GetType())
         {
             return false;
         }
@@ -228,5 +228,13 @@ public class MRect
         }
     }
 
+    public static bool operator ==(MRect? left, MRect? right)
+    {
+        return Equals(left, right);
+    }
 
+    public static bool operator !=(MRect? left, MRect? right)
+    {
+        return !Equals(left, right);
+    }
 }

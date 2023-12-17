@@ -1,10 +1,10 @@
 ﻿using System.IO;
 using System.Linq;
-using System.Threading.Tasks;
 using System.Xml;
 using Mapsui.Providers.Wms;
 using Mapsui.Tests.Utilities;
 using NUnit.Framework;
+using NUnit.Framework.Legacy;
 
 namespace Mapsui.Tests.Wms;
 
@@ -27,6 +27,6 @@ internal class WmsProviderTests
         var legendUrls = provider.GetLegendRequestUrls();
 
         // assert
-        Assert.True(legendUrls.Count() == 2);
+        ClassicAssert.True(legendUrls.Count() == 2);
     }
 }

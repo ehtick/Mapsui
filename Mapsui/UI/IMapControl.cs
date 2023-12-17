@@ -6,13 +6,11 @@ using Mapsui.Utilities;
 
 namespace Mapsui.UI;
 
-public interface IMapControl
+public interface IMapControl : IDisposable
 {
     event EventHandler<MapInfoEventArgs> Info;
 
-    Map? Map { get; set; }
-
-    event EventHandler? ViewportInitialized;
+    Map Map { get; set; }
 
     void RefreshGraphics();
 
@@ -63,9 +61,5 @@ public interface IMapControl
     /// <returns>Byte array with snapshot in png format. If there are any problems than returns null.</returns>
     byte[] GetSnapshot(IEnumerable<ILayer>? layers = null);
 
-    INavigator? Navigator { get; }
-
     Performance? Performance { get; set; }
-
-    IReadOnlyViewport Viewport { get; }
 }

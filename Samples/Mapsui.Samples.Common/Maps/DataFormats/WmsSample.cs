@@ -1,24 +1,22 @@
-﻿using System;
-using Mapsui.Cache;
+﻿using Mapsui.Cache;
 using Mapsui.Layers;
 using Mapsui.Providers.Wms;
 using System.Threading.Tasks;
 using Mapsui.Styles;
-using Mapsui.UI;
 
 namespace Mapsui.Samples.Common.Maps.DataFormats;
 
-public class WmsSample : ISample, ISampleTest
+public class WmsSample : ISample
 {
     public string Name => " 6 WMS";
     public string Category => "Data Formats";
-    public static IUrlPersistentCache? DefaultCache { get; set; }
 
     public async Task<Map> CreateMapAsync()
     {
         var map = new Map { CRS = "EPSG:28992" };
         // The WMS request needs a CRS
         map.Layers.Add(await CreateLayerAsync());
+        map.Navigator.CenterOnAndZoomTo(new MPoint(155000, 463000), 500);
         return map;
     }
 
@@ -33,9 +31,9 @@ public class WmsSample : ISample, ISampleTest
 
     private static async Task<WmsProvider> CreateWmsProviderAsync()
     {
-        const string wmsUrl = "https://geodata.nationaalgeoregister.nl/windkaart/wms?request=GetCapabilities";
+        const string wmsUrl = "https://service.pdok.nl/rvo/windkaart/wms/v1_0?request=getcapabilities&service=wms";
 
-        var provider = await WmsProvider.CreateAsync(wmsUrl, persistentCache: DefaultCache);
+        var provider = await WmsProvider.CreateAsync(wmsUrl);
         provider.ContinueOnError = true;
         provider.TimeOut = 20000;
         provider.CRS = "EPSG:28992";
@@ -43,16 +41,5 @@ public class WmsSample : ISample, ISampleTest
         provider.AddLayer("windsnelheden100m");
         provider.SetImageFormat(provider.OutputFormats[0]);
         return provider;
-    }
-
-    public Task InitializeTestAsync(IMapControl mapControl)
-    {
-        if (mapControl.Viewport is IViewport viewport)
-        {
-            // Set Center to Visible Map
-            viewport.SetCenter(412, 1316);
-        }
-
-        return Task.CompletedTask;
     }
 }

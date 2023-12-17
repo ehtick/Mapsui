@@ -1,18 +1,15 @@
 ﻿using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
-using Mapsui.UI;
 using System.Threading.Tasks;
 using Mapsui.Extensions;
 using Mapsui.Logging;
-using Mapsui.Rendering.Skia;
 using Mapsui.Samples.Common;
 using Mapsui.Samples.Common.Extensions;
 using Mapsui.Samples.CustomWidget;
 using Mapsui.Styles;
 using Mapsui.UI.Maui;
 using Microsoft.Maui.Controls;
-using Microsoft.Maui.Controls.Xaml;
 using Microsoft.Maui.Devices.Sensors;
 using Compass = Microsoft.Maui.Devices.Sensors.Compass;
 using Microsoft.Maui.Dispatching;
@@ -29,8 +26,8 @@ public sealed partial class MapPage : ContentPage, IDisposable
         InitializeComponent();
 
         // nullable warning workaround
-        var test = this.mapView ?? throw new InvalidOperationException();
-        var test1 = this.info ?? throw new InvalidOperationException();
+        var test = mapView ?? throw new InvalidOperationException();
+        var test1 = info ?? throw new InvalidOperationException();
     }
 
     public MapPage(ISampleBase sample, Func<MapView?, MapClickedEventArgs, bool>? c = null)
@@ -38,8 +35,8 @@ public sealed partial class MapPage : ContentPage, IDisposable
         InitializeComponent();
 
         // nullable warning workaround
-        var test = this.mapView ?? throw new InvalidOperationException();
-        var test1 = this.info ?? throw new InvalidOperationException();
+        var test = mapView ?? throw new InvalidOperationException();
+        var test1 = info ?? throw new InvalidOperationException();
 
         mapView!.RotationLock = false;
         mapView.UnSnapRotationDegrees = 20;
@@ -81,7 +78,7 @@ public sealed partial class MapPage : ContentPage, IDisposable
         mapView.Refresh();
     }
 
-    private void MapView_Info(object? sender, UI.MapInfoEventArgs? e)
+    private void MapView_Info(object? sender, Mapsui.MapInfoEventArgs? e)
     {
         if (e?.MapInfo?.Feature != null)
         {
@@ -94,7 +91,7 @@ public sealed partial class MapPage : ContentPage, IDisposable
                 }
             }
 
-            mapView.Refresh();
+            mapView.RefreshGraphics();
         }
     }
 
@@ -129,8 +126,8 @@ public sealed partial class MapPage : ContentPage, IDisposable
     {
         try
         {
-            this.gpsCancelation?.Dispose();
-            this.gpsCancelation = new CancellationTokenSource();
+            gpsCancelation?.Dispose();
+            gpsCancelation = new CancellationTokenSource();
 
             await Task.Run(async () =>
             {
@@ -139,7 +136,7 @@ public sealed partial class MapPage : ContentPage, IDisposable
                     var request = new GeolocationRequest(GeolocationAccuracy.Medium, TimeSpan.FromSeconds(10));
                     Application.Current?.Dispatcher.DispatchAsync(async () =>
                     {
-                        var location = await Geolocation.GetLocationAsync(request, this.gpsCancelation.Token).ConfigureAwait(false);
+                        var location = await Geolocation.GetLocationAsync(request, gpsCancelation.Token).ConfigureAwait(false);
                         if (location != null)
                         {
                             MyLocationPositionChanged(location);
@@ -158,7 +155,7 @@ public sealed partial class MapPage : ContentPage, IDisposable
 
     public void StopGPS()
     {
-        this.gpsCancelation?.Cancel();
+        gpsCancelation?.Cancel();
     }
 
     /// <summary>
@@ -172,10 +169,10 @@ public sealed partial class MapPage : ContentPage, IDisposable
         {
             await Application.Current?.Dispatcher?.DispatchAsync(() =>
             {
-                mapView?.MyLocationLayer.UpdateMyLocation(new UI.Maui.Position(e.Latitude, e.Longitude));
+                mapView?.MyLocationLayer.UpdateMyLocation(new Position(e.Latitude, e.Longitude));
                 if (e.Course != null)
                 {
-                    mapView?.MyLocationLayer.UpdateMyDirection(e.Course.Value, mapView?.Viewport.Rotation ?? 0);
+                    mapView?.MyLocationLayer.UpdateMyDirection(e.Course.Value, mapView?.Map.Navigator.Viewport.Rotation ?? 0);
                 }
 
                 if (e.Speed != null)
@@ -192,7 +189,7 @@ public sealed partial class MapPage : ContentPage, IDisposable
 
     private void Compass_ReadingChanged(object? sender, CompassChangedEventArgs e)
     {
-        mapView.MyLocationLayer.UpdateMyViewDirection(e.Reading.HeadingMagneticNorth, mapView.Viewport.Rotation, false);
+        mapView.MyLocationLayer.UpdateMyViewDirection(e.Reading.HeadingMagneticNorth, mapView.Map.Navigator.Viewport.Rotation, false);
     }
 
     public void Dispose()

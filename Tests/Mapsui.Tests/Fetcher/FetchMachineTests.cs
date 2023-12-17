@@ -10,6 +10,7 @@ using Mapsui.Tests.Fetcher.Providers;
 using Mapsui.Tiling.Extensions;
 using Mapsui.Tiling.Fetcher;
 using NUnit.Framework;
+using NUnit.Framework.Legacy;
 
 namespace Mapsui.Tests.Fetcher;
 
@@ -32,7 +33,7 @@ public class FetchMachineTests
         var level = 3;
         var expectedTiles = 64;
 
-        var fetchInfo = new FetchInfo(tileSchema.Extent.ToMRect(), tileSchema.Resolutions[level].UnitsPerPixel);
+        var fetchInfo = new FetchInfo(new MSection(tileSchema.Extent.ToMRect(), tileSchema.Resolutions[level].UnitsPerPixel));
 
         // Act
         // Get all tiles of level 3
@@ -41,9 +42,9 @@ public class FetchMachineTests
         // Assert
         while (fetchDispatcher.Busy) { Thread.Sleep(1); }
 
-        Assert.AreEqual(expectedTiles, tileProvider.CountByTile.Keys.Count);
-        Assert.AreEqual(expectedTiles, tileProvider.CountByTile.Values.Sum());
-        Assert.AreEqual(expectedTiles, tileProvider.TotalCount);
+        ClassicAssert.AreEqual(expectedTiles, tileProvider.CountByTile.Keys.Count);
+        ClassicAssert.AreEqual(expectedTiles, tileProvider.CountByTile.Values.Sum());
+        ClassicAssert.AreEqual(expectedTiles, tileProvider.TotalCount);
     }
 
     [Test]
@@ -58,7 +59,7 @@ public class FetchMachineTests
         var tileMachine = new FetchMachine(fetchDispatcher);
         var level = 3;
         var expectedTiles = 64;
-        var fetchInfo = new FetchInfo(tileSchema.Extent.ToMRect(), tileSchema.Resolutions[level].UnitsPerPixel);
+        var fetchInfo = new FetchInfo(new MSection(tileSchema.Extent.ToMRect(), tileSchema.Resolutions[level].UnitsPerPixel));
 
         // Act
         fetchDispatcher.SetViewport(fetchInfo);
@@ -71,10 +72,10 @@ public class FetchMachineTests
         while (fetchDispatcher.Busy) { Thread.Sleep(1); }
 
         // Assert
-        Assert.AreEqual(countAfterFirstTry, tileProvider.CountByTile.Values.Sum());
-        Assert.AreEqual(expectedTiles, tileProvider.CountByTile.Keys.Count);
-        Assert.AreEqual(expectedTiles, tileProvider.CountByTile.Values.Sum());
-        Assert.AreEqual(expectedTiles, tileProvider.TotalCount);
+        ClassicAssert.AreEqual(countAfterFirstTry, tileProvider.CountByTile.Values.Sum());
+        ClassicAssert.AreEqual(expectedTiles, tileProvider.CountByTile.Keys.Count);
+        ClassicAssert.AreEqual(expectedTiles, tileProvider.CountByTile.Values.Sum());
+        ClassicAssert.AreEqual(expectedTiles, tileProvider.TotalCount);
     }
 
 
@@ -90,7 +91,7 @@ public class FetchMachineTests
         var tileMachine = new FetchMachine(fetchDispatcher);
         var level = 3;
         var tilesInLevel = 64;
-        var fetchInfo = new FetchInfo(tileSchema.Extent.ToMRect(), tileSchema.Resolutions[level].UnitsPerPixel);
+        var fetchInfo = new FetchInfo(new MSection(tileSchema.Extent.ToMRect(), tileSchema.Resolutions[level].UnitsPerPixel));
         // Act
         fetchDispatcher.SetViewport(fetchInfo);
         tileMachine.Start();
@@ -101,7 +102,7 @@ public class FetchMachineTests
         while (fetchDispatcher.Busy) { Thread.Sleep(1); }
 
         // Assert
-        Assert.AreEqual(tilesInLevel, tileProvider.TotalCount);
+        ClassicAssert.AreEqual(tilesInLevel, tileProvider.TotalCount);
     }
 
     [Test]
@@ -116,7 +117,7 @@ public class FetchMachineTests
         var tileMachine = new FetchMachine(fetchDispatcher);
         var level = 3;
         var tilesInLevel = 64;
-        var fetchInfo = new FetchInfo(tileSchema.Extent.ToMRect(), tileSchema.Resolutions[level].UnitsPerPixel);
+        var fetchInfo = new FetchInfo(new MSection(tileSchema.Extent.ToMRect(), tileSchema.Resolutions[level].UnitsPerPixel));
 
         // Act
         fetchDispatcher.SetViewport(fetchInfo);
@@ -129,7 +130,7 @@ public class FetchMachineTests
         while (fetchDispatcher.Busy) { Thread.Sleep(1); }
 
         // Assert
-        Assert.AreEqual(tilesInLevel * 2, tileProvider.TotalCount); // tried all tiles twice
+        ClassicAssert.AreEqual(tilesInLevel * 2, tileProvider.TotalCount); // tried all tiles twice
     }
 
     [Test]
@@ -144,7 +145,7 @@ public class FetchMachineTests
         var tileMachine = new FetchMachine(fetchDispatcher);
         var level = 3;
         var tilesInLevel = 64;
-        var fetchInfo = new FetchInfo(tileSchema.Extent.ToMRect(), tileSchema.Resolutions[level].UnitsPerPixel);
+        var fetchInfo = new FetchInfo(new MSection(tileSchema.Extent.ToMRect(), tileSchema.Resolutions[level].UnitsPerPixel));
 
         // Act
         fetchDispatcher.SetViewport(fetchInfo);
@@ -159,8 +160,8 @@ public class FetchMachineTests
         while (fetchDispatcher.Busy) { Thread.Sleep(1); }
 
         // Assert
-        Assert.GreaterOrEqual(tileProvider.TotalCount, tileCountAfterFirstBatch);
-        Assert.GreaterOrEqual(tileProvider.CountByTile.Values.Sum(), tilesInLevel);
+        ClassicAssert.GreaterOrEqual(tileProvider.TotalCount, tileCountAfterFirstBatch);
+        ClassicAssert.GreaterOrEqual(tileProvider.CountByTile.Values.Sum(), tilesInLevel);
 
     }
 
@@ -176,7 +177,7 @@ public class FetchMachineTests
         var tileMachine = new FetchMachine(fetchDispatcher);
         var numberOfWorkers = 8;
         var numberOfRestarts = 3;
-        var fetchInfo = new FetchInfo(tileSchema.Extent.ToMRect(), tileSchema.Resolutions[3].UnitsPerPixel);
+        var fetchInfo = new FetchInfo(new MSection(tileSchema.Extent.ToMRect(), tileSchema.Resolutions[3].UnitsPerPixel));
 
         // Act
         for (var i = 0; i < numberOfRestarts; i++)
@@ -187,7 +188,7 @@ public class FetchMachineTests
         }
 
         // Assert
-        Assert.Greater(numberOfWorkers * numberOfRestarts, FetchWorker.RestartCounter);
+        ClassicAssert.Greater(numberOfWorkers * numberOfRestarts, FetchWorker.RestartCounter);
     }
 
     private async Task<RasterFeature> TileToFeatureAsync(ITileSource tileProvider, TileInfo tileInfo)

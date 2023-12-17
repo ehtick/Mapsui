@@ -5,26 +5,32 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Mapsui.Features;
 using Mapsui.Layers;
 using Mapsui.Nts.Extensions;
 using Mapsui.Providers;
 using NetTopologySuite.Features;
 using NetTopologySuite.Geometries;
+using NetTopologySuite.Index.Strtree;
 using NetTopologySuite.IO.Converters;
 
 namespace Mapsui.Nts.Providers;
 
-public class GeoJsonProvider : IProvider
+public class GeoJsonProvider : IProvider, IProviderExtended
 {
     private static ReadOnlySpan<byte> Utf8Bom => new byte[] { 0xEF, 0xBB, 0xBF };
-    private string _geoJson;
-    private FeatureCollection? _featureCollection;
+    private readonly string _geoJson;
+    private readonly object _lock = new();
+    private STRtree<GeometryFeature>? _index;
     private MRect? _extent;
+    private FeatureKeyCreator<string>? _featureKeyCreator;
 
-    public GeoJsonProvider(string geojson)
+    public GeoJsonProvider(string geoJson)
     {
-        _geoJson = geojson;
+        _geoJson = geoJson;
     }
+
+    public int Id { get; } = BaseLayer.NextId();
 
     private GeoJsonConverterFactory GeoJsonConverterFactory { get; } = new();
 
@@ -69,27 +75,81 @@ public class GeoJsonProvider : IProvider
     }
 
     /// <summary> Is Geo Json Content </summary>
-    /// <returns>true if it contains geojson {} or []</returns>
+    /// <returns>true if it contains geoJson {} or []</returns>
     private bool IsGeoJsonContent()
     {
         if (string.IsNullOrWhiteSpace(_geoJson))
             return false;
 
-        return (_geoJson.IndexOf("{") >= 0 && _geoJson.IndexOf("}") >= 0) || (_geoJson.IndexOf("[") >= 0 && _geoJson.IndexOf("]") >= 0);
+        return (_geoJson.Contains("{", StringComparison.CurrentCulture)
+            && _geoJson.Contains("}", StringComparison.CurrentCulture))
+            || (_geoJson.Contains("[", StringComparison.CurrentCulture)
+            && _geoJson.Contains("]", StringComparison.CurrentCulture));
     }
 
+    public FeatureKeyCreator<string> FeatureKeyCreator
+    {
+        get => _featureKeyCreator ??= new FeatureKeyCreator<string>();
+        set => _featureKeyCreator = value;
+    }
 
-    private FeatureCollection FeatureCollection
+    private STRtree<GeometryFeature> FeatureCollection
     {
         get
         {
-            if (_featureCollection == null)
+            if (_index == null)
             {
-                // maybe it has GeoJson Content.
-                _featureCollection = IsGeoJsonContent() ? DeserializContent(_geoJson, DefaultOptions) : DeserializeFile(_geoJson, DefaultOptions);
+                // only initialization lock
+                lock (_lock)
+                {
+                    if (_index == null)
+                    {
+                        // maybe it has GeoJson Content.
+                        var featureCollection = IsGeoJsonContent()
+                            ? DeserializContent(_geoJson, DefaultOptions)
+                            : DeserializeFile(_geoJson, DefaultOptions);
+                        _index = new();
+                        foreach (var feature in featureCollection)
+                        {
+                            var boundingBox = BoundingBox(feature);
+                            if (boundingBox != null)
+                            {
+                                var optionalId = feature.GetOptionalId("Id");
+                                GeometryFeature geometryFeature;
+                                switch (optionalId)
+                                {
+                                    case uint number:
+                                        geometryFeature = new GeometryFeature(FeatureId.CreateId(Id, number));
+                                        break;
+                                    case null:
+                                        geometryFeature = new GeometryFeature();
+                                        break;
+                                    default:
+                                        {
+                                            string str = optionalId as string ?? optionalId.ToString() ?? string.Empty;
+                                            geometryFeature = new GeometryFeature(FeatureId.CreateId(Id, str, FeatureKeyCreator.GetKey));
+                                            break;
+                                        }
+                                }
+
+                                geometryFeature.Geometry = feature.Geometry;
+                                FillFields(geometryFeature, feature.Attributes);
+
+                                _index.Insert(boundingBox, geometryFeature);
+
+                                // build extent
+                                var mRect = boundingBox.ToMRect();
+                                if (_extent == null)
+                                    _extent = mRect;
+                                else
+                                    _extent.Join(mRect);
+                            }
+                        }
+                    }
+                }
             }
 
-            return _featureCollection;
+            return _index;
         }
     }
 
@@ -101,25 +161,8 @@ public class GeoJsonProvider : IProvider
     {
         if (_extent == null)
         {
-            if (FeatureCollection.BoundingBox != null)
-            {
-                _extent = FeatureCollection.BoundingBox.ToMRect();
-            }
-            else
-            {
-                foreach (var geometry in FeatureCollection)
-                {
-                    var boundingBox = BoundingBox(geometry);
-                    if (boundingBox != null)
-                    {
-                        var mRect = boundingBox.ToMRect();
-                        if (_extent == null)
-                            _extent = mRect;
-                        else
-                            _extent.Join(mRect);
-                    }
-                }
-            }
+            // builds extent
+            _ = FeatureCollection;
         }
 
         return _extent;
@@ -129,24 +172,11 @@ public class GeoJsonProvider : IProvider
     public Task<IEnumerable<IFeature>> GetFeaturesAsync(FetchInfo fetchInfo)
     {
         var fetchExtent = fetchInfo.Extent.ToEnvelope();
-        var list = new List<IFeature>();
-
-        foreach (NetTopologySuite.Features.IFeature? feature in FeatureCollection)
-        {
-            var boundingBox = BoundingBox(feature);
-            if (boundingBox.Intersects(fetchExtent))
-            {
-                var geometryFeature = new GeometryFeature();
-                geometryFeature.Geometry = feature.Geometry;
-                FillFields(geometryFeature, feature.Attributes);
-                list.Add(geometryFeature);
-            }
-        }
-
-        return Task.FromResult((IEnumerable<IFeature>)list);
+        IEnumerable<IFeature> result = FeatureCollection.Query(fetchExtent);
+        return Task.FromResult(result);
     }
 
-    private void FillFields(GeometryFeature geometryFeature, IAttributesTable featureAttributes)
+    private static void FillFields(GeometryFeature geometryFeature, IAttributesTable featureAttributes)
     {
         foreach (var attribute in featureAttributes.GetNames())
         {
@@ -156,9 +186,9 @@ public class GeoJsonProvider : IProvider
         }
     }
 
-    private object? Decode(object? value)
+    private static object? Decode(object? value)
     {
-        // somehow there exist geojson documents with %C3%A9 characters (url encoded utf8 symbols)
+        // somehow there exist geoJson documents with %C3%A9 characters (url encoded utf8 symbols)
         if (value is string str)
         {
             return WebUtility.UrlDecode(str);

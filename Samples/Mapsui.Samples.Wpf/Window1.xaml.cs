@@ -4,24 +4,25 @@ using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
-using System.Windows.Input;
 using Mapsui.Extensions;
 using Mapsui.Logging;
-using Mapsui.Providers;
 using Mapsui.Samples.CustomWidget;
 using Mapsui.Samples.Wpf.Utilities;
-using Mapsui.UI;
 using Mapsui.Samples.Common;
 using Mapsui.Samples.Common.Extensions;
+using Mapsui.UI.Wpf;
+using System.Windows.Threading;
 
 namespace Mapsui.Samples.Wpf;
 
+// Line below had to be added to suppress Warning CA1416 'Call site reachable by all platforms', although WPF only runs on Windows.
+[System.Runtime.Versioning.SupportedOSPlatform("windows")]
 public partial class Window1
 {
     static Window1()
     {
         // todo: find proper way to load assembly
-        Mapsui.Tests.Common.Utilities.LoadAssembly();
+        Tests.Common.Utilities.LoadAssembly();
     }
 
     public Window1()
@@ -29,10 +30,7 @@ public partial class Window1
         InitializeComponent();
 
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-
-        MapControl.FeatureInfo += MapControlFeatureInfo;
-        MapControl.MouseMove += MapControlOnMouseMove;
-        MapControl.Map!.RotationLock = false;
+        MapControl.Map.Navigator.RotationLock = false;
         MapControl.UnSnapRotationDegrees = 30;
         MapControl.ReSnapRotationDegrees = 5;
         MapControl.Renderer.WidgetRenders[typeof(CustomWidget.CustomWidget)] = new CustomWidgetSkiaRenderer();
@@ -43,13 +41,6 @@ public partial class Window1
 
         FillComboBoxWithCategories();
         FillListWithSamples();
-    }
-
-    private void MapControlOnMouseMove(object sender, MouseEventArgs e)
-    {
-        var screenPosition = e.GetPosition(MapControl);
-        var worldPosition = MapControl.Viewport.ScreenToWorld(screenPosition.X, screenPosition.Y);
-        MouseCoordinates.Text = $"{worldPosition.X:F0}, {worldPosition.Y:F0}";
     }
 
     private void FillListWithSamples()
@@ -83,7 +74,7 @@ public partial class Window1
         CategoryComboBox.SelectedIndex = 0;
     }
 
-    private UIElement CreateRadioButton(ISampleBase sample)
+    private RadioButton CreateRadioButton(ISampleBase sample)
     {
         var radioButton = new RadioButton
         {
@@ -100,7 +91,6 @@ public partial class Window1
 
                 await sample.SetupAsync(MapControl);
 
-                MapControl.Info += MapControlOnInfo;
                 if (MapControl.Map != null)
                     LayerList.Initialize(MapControl.Map.Layers);
             });
@@ -108,7 +98,7 @@ public partial class Window1
         return radioButton;
     }
 
-    readonly LimitedQueue<LogModel> _logMessage = new LimitedQueue<LogModel>(6);
+    readonly LimitedQueue<LogModel> _logMessage = new(6);
 
     private void LogMethod(LogLevel logLevel, string? message, Exception? exception)
     {
@@ -116,7 +106,7 @@ public partial class Window1
         Dispatcher.BeginInvoke(() => LogTextBox.Text = ToMultiLineString(_logMessage));
     }
 
-    private string ToMultiLineString(LimitedQueue<LogModel> logMessages)
+    private static string ToMultiLineString(LimitedQueue<LogModel> logMessages)
     {
         var result = new StringBuilder();
 
@@ -130,29 +120,9 @@ public partial class Window1
         return result.ToString();
     }
 
-    private static void MapControlFeatureInfo(object? sender, FeatureInfoEventArgs e)
-    {
-        MessageBox.Show(e.FeatureInfo?.ToDisplayText());
-    }
-
     private void RotationSliderChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         var percent = RotationSlider.Value / (RotationSlider.Maximum - RotationSlider.Minimum);
-        MapControl.Navigator?.RotateTo(percent * 360);
-        MapControl.Refresh();
-    }
-
-    private void MapControlOnInfo(object? sender, MapInfoEventArgs args)
-    {
-        if (args.MapInfo?.Feature != null)
-        {
-            FeatureInfoBorder.Visibility = Visibility.Visible;
-            FeatureInfo.Text = $"Click Info:{Environment.NewLine}{args.MapInfo.Feature.ToDisplayText()}";
-        }
-        else
-        {
-            FeatureInfoBorder.Visibility = Visibility.Collapsed;
-        }
-
+        MapControl.Map.Navigator.RotateTo(percent * 360);
     }
 }

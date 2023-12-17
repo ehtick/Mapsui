@@ -6,12 +6,12 @@ using System.Linq;
 using System.Threading.Tasks;
 using BruTile;
 using BruTile.Cache;
-using ConcurrentCollections;
 using Mapsui.Extensions;
 using Mapsui.Fetcher;
 using Mapsui.Layers;
 using Mapsui.Logging;
 using Mapsui.Tiling.Extensions;
+using Mapsui.Utilities;
 
 namespace Mapsui.Tiling.Fetcher;
 
@@ -23,8 +23,8 @@ public class TileFetchDispatcher : IFetchDispatcher, INotifyPropertyChanged
     private bool _viewportIsModified;
     private readonly ITileCache<IFeature?> _tileCache;
     private readonly IDataFetchStrategy _dataFetchStrategy;
-    private readonly ConcurrentQueue<TileInfo> _tilesToFetch = new();
-    private readonly ConcurrentHashSet<TileIndex> _tilesInProgress = new();
+    private readonly ConcurrentQueue<TileInfo> _tilesToFetch = [];
+    private readonly ConcurrentHashSet<TileIndex> _tilesInProgress = [];
     private readonly ITileSchema? _tileSchema;
     private readonly FetchMachine _fetchMachine;
     private readonly Func<TileInfo, Task<IFeature?>> _fetchTileAsFeature;
@@ -46,6 +46,8 @@ public class TileFetchDispatcher : IFetchDispatcher, INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
     public int NumberTilesNeeded { get; private set; }
 
+    public static int MaxTilesInOneRequest { get; set; } = 128;
+
     public void SetViewport(FetchInfo fetchInfo)
     {
         lock (_lockRoot)
@@ -64,28 +66,27 @@ public class TileFetchDispatcher : IFetchDispatcher, INotifyPropertyChanged
             if (_tilesToFetch.TryDequeue(out var tileInfo))
             {
                 _tilesInProgress.Add(tileInfo.Index);
-                method = async () => await FetchOnThreadAsync(tileInfo);
+                method = async () => await FetchOnThreadAsync(tileInfo).ConfigureAwait(false);
                 return true;
             }
 
-            Busy = _tilesInProgress.Count > 0 || _tilesToFetch.Count > 0;
+            Busy = _tilesInProgress.Count > 0 || !_tilesToFetch.IsEmpty;
             // else the queue is empty, we are done.
             method = null;
             return false;
         }
     }
 
-    [SuppressMessage("IDisposableAnalyzers.Correctness", "IDISP001:Dispose created")]
     private async Task FetchOnThreadAsync(TileInfo tileInfo)
     {
         try
         {
-            var feature = await _fetchTileAsFeature(tileInfo);
+            var feature = await _fetchTileAsFeature(tileInfo).ConfigureAwait(false);
             FetchCompleted(tileInfo, feature, null);
         }
         catch (Exception ex)
         {
-            Logger.Log(LogLevel.Error, ex.Message, ex);
+            // The exception is returned to the caller and should be logged there.
             FetchCompleted(tileInfo, null, ex);
         }
     }
@@ -107,7 +108,7 @@ public class TileFetchDispatcher : IFetchDispatcher, INotifyPropertyChanged
                 _tileCache.Add(tileInfo.Index, feature);
             _tilesInProgress.TryRemove(tileInfo.Index);
 
-            Busy = _tilesInProgress.Count > 0 || _tilesToFetch.Count > 0;
+            Busy = _tilesInProgress.Count > 0 || !_tilesToFetch.IsEmpty;
 
             DataChanged?.Invoke(this, new DataChangedEventArgs(exception, false, tileInfo));
         }
@@ -141,15 +142,28 @@ public class TileFetchDispatcher : IFetchDispatcher, INotifyPropertyChanged
 
     private void UpdateTilesToFetchForViewportChange()
     {
-        if (_fetchInfo == null || _tileSchema == null)
+        // Use local fields to avoid changes caused by other threads during this calculation.
+        var localFetchInfo = _fetchInfo;
+        var localTileSchema = _tileSchema;
+
+        if (localFetchInfo is null || localTileSchema is null)
             return;
 
-        var levelId = BruTile.Utilities.GetNearestLevel(_tileSchema.Resolutions, _fetchInfo.Resolution);
-        var tilesToCoverViewport = _dataFetchStrategy.Get(_tileSchema, _fetchInfo.Extent.ToExtent(), levelId);
+        var levelId = BruTile.Utilities.GetNearestLevel(localTileSchema.Resolutions, localFetchInfo.Resolution);
+        var tilesToCoverViewport = _dataFetchStrategy.Get(localTileSchema, localFetchInfo.Extent.ToExtent(), levelId);
         NumberTilesNeeded = tilesToCoverViewport.Count;
         var tilesToFetch = tilesToCoverViewport.Where(t => _tileCache.Find(t.Index) == null && !_tilesInProgress.Contains(t.Index));
+        if (tilesToFetch.Count() > MaxTilesInOneRequest)
+        {
+            tilesToFetch = tilesToFetch.Take(MaxTilesInOneRequest).ToList();
+            Logger.Log(LogLevel.Warning,
+                $"The number tiles requested is '{tilesToFetch.Count()}' which exceeds the maximum " +
+                $"of '{MaxTilesInOneRequest}'. The number of tiles will be limited to the maximum. Note, " +
+                $"that this may indicate a bug or configuration error");
+        }
+
         _tilesToFetch.Clear();
         _tilesToFetch.AddRange(tilesToFetch);
-        if (_tilesToFetch.Count > 0) Busy = true;
+        if (!_tilesToFetch.IsEmpty) Busy = true;
     }
 }

@@ -10,7 +10,6 @@ using Mapsui.Samples.Common;
 using Mapsui.Samples.Common.Extensions;
 using Mapsui.Samples.Common.Maps;
 using Mapsui.Samples.CustomWidget;
-using Mapsui.UI;
 using Mapsui.Tiling;
 using Mapsui.Samples.Common.Utilities;
 
@@ -27,16 +26,15 @@ public sealed partial class MainWindow : Window
     static MainWindow()
     {
         // todo: find proper way to load assembly
-        Mapsui.Tests.Common.Utilities.LoadAssembly();
+        Tests.Common.Utilities.LoadAssembly();
     }
 
     public MainWindow()
     {
         InitializeComponent();
 
-
-        MapControl.Map!.Layers.Add(OpenStreetMap.CreateTileLayer());
-        MapControl.Map.RotationLock = false;
+        MapControl.Map.Layers.Add(OpenStreetMap.CreateTileLayer());
+        MapControl.Map.Navigator.RotationLock = false;
         MapControl.UnSnapRotationDegrees = 30;
         MapControl.ReSnapRotationDegrees = 5;
         MapControl.Renderer.WidgetRenders[typeof(CustomWidget.CustomWidget)] = new CustomWidgetSkiaRenderer();
@@ -58,12 +56,6 @@ public sealed partial class MainWindow : Window
             CategoryComboBox.Items?.Add(category);
         }
         CategoryComboBox.SelectedIndex = 1;
-    }
-
-    private void MapOnInfo(object? sender, MapInfoEventArgs args)
-    {
-        if (args.MapInfo?.Feature != null)
-            FeatureInfo.Text = $"Click Info:{Environment.NewLine}{args.MapInfo.Feature.ToDisplayText()}";
     }
 
     private void FillListWithSamples()
@@ -97,9 +89,7 @@ public sealed partial class MainWindow : Window
             Catch.Exceptions(async () =>
             {
                 MapControl.Map!.Layers.Clear();
-                MapControl.Info -= MapOnInfo;
                 await sample.SetupAsync(MapControl);
-                MapControl.Info += MapOnInfo;
                 MapControl.Refresh();
             });
         };
@@ -107,12 +97,9 @@ public sealed partial class MainWindow : Window
         return radioButton;
     }
 
-    private static string MbTilesLocationOnWinUI => ApplicationData.Current.LocalFolder.Path;
-
     private void RotationSlider_OnValueChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
         var percent = RotationSlider.Value / (RotationSlider.Maximum - RotationSlider.Minimum);
-        MapControl.Navigator?.RotateTo(percent * 360);
-        MapControl.Refresh();
+        MapControl.Map.Navigator.RotateTo(percent * 360);
     }
 }

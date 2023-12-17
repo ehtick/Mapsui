@@ -7,11 +7,10 @@ using Mapsui.Styles;
 using NetTopologySuite.Geometries;
 using SkiaSharp;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using Mapsui.Rendering.Skia.Cache;
+using Mapsui.Extensions;
 
 namespace Mapsui.Rendering.Skia;
 
@@ -47,7 +46,7 @@ public class LabelStyleRenderer : ISkiaStyleRenderer, IFeatureSize
     }
 
 
-    public bool Draw(SKCanvas canvas, IReadOnlyViewport viewport, ILayer layer, IFeature feature, IStyle style, IRenderCache renderCache, long iteration)
+    public bool Draw(SKCanvas canvas, Viewport viewport, ILayer layer, IFeature feature, IStyle style, IRenderCache renderCache, long iteration)
     {
         try
         {
@@ -297,7 +296,7 @@ public class LabelStyleRenderer : ISkiaStyleRenderer, IFeatureSize
         if (color.HasValue)
         {
             var rounding = style.CornerRounding;
-            using var backgroundPaint = new SKPaint { Color = color.Value };
+            using var backgroundPaint = new SKPaint { Color = color.Value, IsAntialias = true };
             target.DrawRoundRect(rect, rounding, rounding, backgroundPaint);
             if (style.BorderThickness > 0 &&
                 style.BorderColor != Color.Transparent)
@@ -306,7 +305,8 @@ public class LabelStyleRenderer : ISkiaStyleRenderer, IFeatureSize
                 {
                     Color = style.BorderColor.ToSkia(),
                     Style = SKPaintStyle.Stroke,
-                    StrokeWidth = (float)style.BorderThickness
+                    StrokeWidth = (float)style.BorderThickness,
+                    IsAntialias = true
                 };
                 target.DrawRoundRect(rect, rounding, rounding, borderPaint);
             }
@@ -380,8 +380,12 @@ public class LabelStyleRenderer : ISkiaStyleRenderer, IFeatureSize
         }).ToArray();
     }
 
-    double IFeatureSize.FeatureSize(IFeature feature, IStyle style, IRenderCache renderingCache)
+    bool IFeatureSize.NeedsFeature => true;
+
+    double IFeatureSize.FeatureSize(IStyle style, IRenderCache renderingCache, IFeature? feature)
     {
+        if (feature == null) throw new ArgumentNullException(nameof(feature));
+
         if (style is LabelStyle labelStyle)
         {
             return FeatureSize(feature, labelStyle, Paint, renderingCache);

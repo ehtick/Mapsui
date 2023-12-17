@@ -1,16 +1,9 @@
-using System;
-using System.Collections.Generic;
 using System.ComponentModel;
-using System.Linq;
 using CoreFoundation;
-using CoreGraphics;
-using Foundation;
+using Mapsui.Logging;
 using Mapsui.UI.iOS.Extensions;
 using Mapsui.Utilities;
 using SkiaSharp.Views.iOS;
-using UIKit;
-
-#nullable enable
 
 namespace Mapsui.UI.iOS;
 
@@ -46,12 +39,12 @@ public partial class MapControl : UIView, IMapControl
             if (UseGPU)
             {
                 _glCanvas?.Dispose();
-                _glCanvas = new SKGLView();
+                _glCanvas = [];
             }
             else
             {
                 _canvas?.Dispose();
-                _canvas = new SKCanvasView();
+                _canvas = [];
             }
         }
     }
@@ -78,8 +71,8 @@ public partial class MapControl : UIView, IMapControl
             _glCanvas.PaintSurface += OnPaintSurface;
             AddSubview(_glCanvas);
 
-            AddConstraints(new[]
-            {
+            AddConstraints(
+            [
                 NSLayoutConstraint.Create(this, NSLayoutAttribute.Leading, NSLayoutRelation.Equal, _glCanvas,
                     NSLayoutAttribute.Leading, 1.0f, 0.0f),
                 NSLayoutConstraint.Create(this, NSLayoutAttribute.Trailing, NSLayoutRelation.Equal, _glCanvas,
@@ -88,7 +81,7 @@ public partial class MapControl : UIView, IMapControl
                     NSLayoutAttribute.Top, 1.0f, 0.0f),
                 NSLayoutConstraint.Create(this, NSLayoutAttribute.Bottom, NSLayoutRelation.Equal, _glCanvas,
                     NSLayoutAttribute.Bottom, 1.0f, 0.0f)
-            });
+            ]);
         }
         else
         {
@@ -97,8 +90,8 @@ public partial class MapControl : UIView, IMapControl
             _canvas.PaintSurface += OnPaintSurface;
             AddSubview(_canvas);
 
-            AddConstraints(new[]
-            {
+            AddConstraints(
+            [
                 NSLayoutConstraint.Create(this, NSLayoutAttribute.Leading, NSLayoutRelation.Equal, _canvas,
                     NSLayoutAttribute.Leading, 1.0f, 0.0f),
                 NSLayoutConstraint.Create(this, NSLayoutAttribute.Trailing, NSLayoutRelation.Equal, _canvas,
@@ -107,7 +100,7 @@ public partial class MapControl : UIView, IMapControl
                     NSLayoutAttribute.Top, 1.0f, 0.0f),
                 NSLayoutConstraint.Create(this, NSLayoutAttribute.Bottom, NSLayoutRelation.Equal, _canvas,
                     NSLayoutAttribute.Bottom, 1.0f, 0.0f)
-            });
+            ]);
         }
 
         ClipsToBounds = true;
@@ -129,20 +122,20 @@ public partial class MapControl : UIView, IMapControl
         tapGestureRecognizer.RequireGestureRecognizerToFail(doubleTapGestureRecognizer);
         AddGestureRecognizer(tapGestureRecognizer);
 
-        _viewport.SetSize(ViewportWidth, ViewportHeight);
+        Map.Navigator.SetSize(ViewportWidth, ViewportHeight);
     }
 
 
     private void OnDoubleTapped(UITapGestureRecognizer gesture)
     {
         var position = GetScreenPosition(gesture.LocationInView(this));
-        OnInfo(InvokeInfo(position, position, 2));
+        OnInfo(CreateMapInfoEventArgs(position, position, 2));
     }
 
     private void OnSingleTapped(UITapGestureRecognizer gesture)
     {
         var position = GetScreenPosition(gesture.LocationInView(this));
-        OnInfo(InvokeInfo(position, position, 1));
+        OnInfo(CreateMapInfoEventArgs(position, position, 1));
     }
 
     private void OnPaintSurface(object? sender, SKPaintGLSurfaceEventArgs args)
@@ -173,7 +166,16 @@ public partial class MapControl : UIView, IMapControl
     {
         base.TouchesBegan(touches, evt);
 
-        _virtualRotation = Viewport.Rotation;
+        _virtualRotation = Map.Navigator.Viewport.Rotation;
+
+        if (touches.AnyObject is UITouch touch)
+        {
+            var position = touch.LocationInView(this).ToMapsui();
+            if (HandleTouching(position, true, 1, false))
+            {
+                return;
+            }
+        }
     }
 
     public override void TouchesMoved(NSSet touches, UIEvent? evt)
@@ -185,12 +187,12 @@ public partial class MapControl : UIView, IMapControl
             if (touches.AnyObject is UITouch touch)
             {
                 var position = touch.LocationInView(this).ToMapsui();
+                if (HandleMoving(position, true, 0, false))
+                    return;
+
                 var previousPosition = touch.PreviousLocationInView(this).ToMapsui();
-
-                _viewport.Transform(position, previousPosition);
-                RefreshGraphics();
-
-                _virtualRotation = Viewport.Rotation;
+                Map.Navigator.Drag(position, previousPosition);
+                _virtualRotation = Map.Navigator.Viewport.Rotation;
             }
         }
         else if (evt?.AllTouches.Count >= 2)
@@ -206,22 +208,30 @@ public partial class MapControl : UIView, IMapControl
 
             double rotationDelta = 0;
 
-            if (Map?.RotationLock == false)
+            if (Map.Navigator.RotationLock == false)
             {
                 _virtualRotation += angle - previousAngle;
 
                 rotationDelta = RotationCalculations.CalculateRotationDeltaWithSnapping(
-                    _virtualRotation, _viewport.Rotation, _unSnapRotationDegrees, _reSnapRotationDegrees);
+                    _virtualRotation, Map.Navigator.Viewport.Rotation, _unSnapRotationDegrees, _reSnapRotationDegrees);
             }
 
-            _viewport.Transform(center, previousCenter, radius / previousRadius, rotationDelta);
-            RefreshGraphics();
+            Map.Navigator.Pinch(center, previousCenter, radius / previousRadius, rotationDelta);
         }
     }
 
     public override void TouchesEnded(NSSet touches, UIEvent? e)
     {
         Refresh();
+
+        if (touches.AnyObject is UITouch touch)
+        {
+            var position = touch.LocationInView(this).ToMapsui();
+            if (HandleTouched(position, true, 1, false))
+            {
+                return;
+            }
+        }
     }
 
     /// <summary>
@@ -269,9 +279,16 @@ public partial class MapControl : UIView, IMapControl
         SetViewportSize();
     }
 
-    public void OpenBrowser(string url)
+    public async void OpenBrowser(string url)
     {
-        UIApplication.SharedApplication.OpenUrl(new NSUrl(url));
+        try
+        {
+            await UIApplication.SharedApplication.OpenUrlAsync(new NSUrl(url), new UIApplicationOpenUrlOptions());
+        }
+        catch (Exception ex)
+        {
+            Logger.Log(LogLevel.Error, ex.Message, ex);
+        }
     }
 
     public new void Dispose()
@@ -302,7 +319,7 @@ public partial class MapControl : UIView, IMapControl
     private static (MPoint centre, double radius, double angle) GetPinchValues(List<MPoint> locations)
     {
         if (locations.Count < 2)
-            throw new ArgumentException();
+            throw new ArgumentException($"Less than two locations were passed into {nameof(GetPinchValues)}");
 
         double centerX = 0;
         double centerY = 0;
@@ -313,8 +330,8 @@ public partial class MapControl : UIView, IMapControl
             centerY += location.Y;
         }
 
-        centerX = centerX / locations.Count;
-        centerY = centerY / locations.Count;
+        centerX /= locations.Count;
+        centerY /= locations.Count;
 
         var radius = Algorithms.Distance(centerX, centerY, locations[0].X, locations[0].Y);
 

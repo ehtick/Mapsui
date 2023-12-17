@@ -10,8 +10,10 @@ internal class ZoomLockSample : ISample
 
     public Task<Map> CreateMapAsync()
     {
-        var map = new Map { ZoomLock = true };
+        var map = new Map();
         map.Layers.Add(OpenStreetMap.CreateTileLayer());
+        map.Navigator.ZoomTo(4892);
+        map.Navigator.ZoomLock = true;
         return Task.FromResult(map);
     }
 }

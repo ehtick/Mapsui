@@ -31,7 +31,7 @@ internal class FeatureFetchDispatcher<T> : IFetchDispatcher where T : IFeature
         if (!_modified) return false;
         if (_fetchInfo == null) return false;
 
-        method = () => FetchOnThreadAsync(new FetchInfo(_fetchInfo));
+        method = async () => await FetchOnThreadAsync(new FetchInfo(_fetchInfo)).ConfigureAwait(false);
         _modified = false;
         return true;
     }
@@ -40,7 +40,7 @@ internal class FeatureFetchDispatcher<T> : IFetchDispatcher where T : IFeature
     {
         try
         {
-            var features = DataSource != null ? await DataSource.GetFeaturesAsync(fetchInfo) : new List<IFeature>();
+            var features = DataSource != null ? await DataSource.GetFeaturesAsync(fetchInfo).ConfigureAwait(false) : new List<IFeature>();
 
             FetchCompleted(features, null);
         }
@@ -70,10 +70,7 @@ internal class FeatureFetchDispatcher<T> : IFetchDispatcher where T : IFeature
         // Fetch a bigger extent to include partially visible symbols. 
         // todo: Take into account the maximum symbol size of the layer
 
-        var biggerBox = fetchInfo.Extent.Grow(
-            SymbolStyle.DefaultWidth * 2 * fetchInfo.Resolution,
-            SymbolStyle.DefaultHeight * 2 * fetchInfo.Resolution);
-        _fetchInfo = new FetchInfo(biggerBox, fetchInfo.Resolution, fetchInfo.CRS, fetchInfo.ChangeType);
+        _fetchInfo = fetchInfo.Grow(SymbolStyle.DefaultWidth);
 
 
         _modified = true;

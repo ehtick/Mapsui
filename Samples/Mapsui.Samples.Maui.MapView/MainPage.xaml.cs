@@ -24,7 +24,7 @@ public partial class MainPage : ContentPage
         InitializeComponent();
 
         // nullable warning workaround"
-        var test = this.listView ?? throw new InvalidOperationException();
+        var test = listView ?? throw new InvalidOperationException();
 
         allSamples = AllSamples.GetSamples() ?? new List<ISampleBase>();
 
@@ -56,7 +56,7 @@ public partial class MainPage : ContentPage
         var sample = allSamples.FirstOrDefault(x => x.Name == sampleName);
 
         clicker = null;
-        if (sample is IFormsSample formsSample)
+        if (sample is IMapViewSample formsSample)
             clicker = formsSample.OnClick;
 
         if (sample != null)

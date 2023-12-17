@@ -1,4 +1,6 @@
-﻿using Mapsui.Layers;
+﻿using Mapsui.Extensions;
+using Mapsui.Layers;
+using Mapsui.Rendering.Skia.Cache;
 using Mapsui.Rendering.Skia.Extensions;
 using Mapsui.Rendering.Skia.SkiaStyles;
 using Mapsui.Styles;
@@ -6,11 +8,13 @@ using SkiaSharp;
 using System;
 using Topten.RichTextKit;
 
+#pragma warning disable IDISP001 // Dispose created
+
 namespace Mapsui.Rendering.Skia;
 
 public class CalloutStyleRenderer : ISkiaStyleRenderer
 {
-    public bool Draw(SKCanvas canvas, IReadOnlyViewport viewport, ILayer layer, IFeature feature, Styles.IStyle style, IRenderCache renderCache, long iteration)
+    public bool Draw(SKCanvas canvas, Viewport viewport, ILayer layer, IFeature feature, Styles.IStyle style, IRenderCache renderCache, long iteration)
     {
         if (!style.Enabled)
             return false;
@@ -37,7 +41,7 @@ public class CalloutStyleRenderer : ISkiaStyleRenderer
                 UpdateContent(calloutStyle);
             }
 
-            RenderCallout(calloutStyle);
+            RenderCallout(calloutStyle, renderCache.SymbolCache);
         }
 
         // Now we have the complete callout rendered, so we could draw it
@@ -83,7 +87,7 @@ public class CalloutStyleRenderer : ISkiaStyleRenderer
         return true;
     }
 
-    public static void RenderCallout(CalloutStyle callout)
+    public static void RenderCallout(CalloutStyle callout, ISymbolCache symbolCache)
     {
         if (callout.Content < 0)
             return;
@@ -94,7 +98,7 @@ public class CalloutStyleRenderer : ISkiaStyleRenderer
 
         if (callout.Type == CalloutType.Custom)
         {
-            var bitmapInfo = BitmapHelper.LoadBitmap(BitmapRegistry.Instance.Get(callout.Content));
+            var bitmapInfo = (BitmapInfo)symbolCache.GetOrCreate(callout.Content);
 
             contentWidth = bitmapInfo?.Width ?? 0;
             contentHeight = bitmapInfo?.Height ?? 0;
@@ -121,7 +125,7 @@ public class CalloutStyleRenderer : ISkiaStyleRenderer
             DrawCallout(callout, canvas, path);
 
             // Draw content
-            DrawContent(callout, canvas);
+            DrawContent(callout, canvas, symbolCache);
 
             // Create SKPicture from canvas
             var picture = rec.EndRecording();
@@ -257,7 +261,7 @@ public class CalloutStyleRenderer : ISkiaStyleRenderer
         }
     }
 
-    private static void DrawContent(CalloutStyle callout, SKCanvas canvas)
+    private static void DrawContent(CalloutStyle callout, SKCanvas canvas, ISymbolCache symbolCache)
     {
         // Draw content
         if (callout.Content >= 0)
@@ -282,7 +286,7 @@ public class CalloutStyleRenderer : ISkiaStyleRenderer
             {
 
                 // Get size of content
-                var bitmapInfo = BitmapHelper.LoadBitmap(BitmapRegistry.Instance.Get(callout.Content));
+                var bitmapInfo = (BitmapInfo)symbolCache.GetOrCreate(callout.Content);
 
                 switch (bitmapInfo?.Type)
                 {

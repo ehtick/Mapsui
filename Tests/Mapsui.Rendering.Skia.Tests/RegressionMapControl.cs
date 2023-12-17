@@ -4,42 +4,35 @@
 
 using System;
 using System.Collections.Generic;
-using System.Threading.Tasks;
 using Mapsui.Extensions;
 using Mapsui.Layers;
 using Mapsui.UI;
 using Mapsui.Utilities;
 
-#pragma warning disable CS8600 // Converting null literal or possible null value to non-nullable type.
-#pragma warning disable IDISP008 // Don't assign member with injected and created disposables
 #pragma warning disable CS0067 // The event is never used
+#pragma warning disable IDISP008 // Don't assign member with injected and created disposables
 
 namespace Mapsui.Rendering.Skia.Tests;
 
-public class RegressionMapControl : IMapControl
+public sealed class RegressionMapControl : IMapControl
 {
-    private Map? _map;
-    private readonly LimitedViewport _limitedViewport;
+    private Map _map;
 
-    public RegressionMapControl()
+    public RegressionMapControl(MapRenderer? mapRenderer = null)
     {
-        Renderer = new MapRenderer();
-        _limitedViewport = new LimitedViewport();
+        Renderer = mapRenderer ?? new MapRenderer();
+        _map = new();
     }
 
     public event EventHandler<MapInfoEventArgs>? Info;
 
-    public Map? Map
+    public Map Map
     {
         get => _map;
         set
         {
             _map = value ?? throw new ArgumentNullException();
-            ((IDisposable)Navigator)?.Dispose();
-            Navigator = new Navigator(_map, _limitedViewport);
-            _limitedViewport.Map = _map;
-            _limitedViewport.Limiter = _map.Limiter;
-            CallHomeIfNeeded();
+            _map.Navigator.SetSize(ScreenWidth, ScreenHeight);
         }
     }
 
@@ -93,22 +86,18 @@ public class RegressionMapControl : IMapControl
         throw new NotImplementedException();
     }
 
-    public INavigator? Navigator { get; set; }
     public Performance? Performance { get; set; }
 
-    public IReadOnlyViewport Viewport => _limitedViewport;
-
-    public void SetSize(int width, int height)
+    public double ScreenWidth { get; private set; }
+    public double ScreenHeight { get; private set; }
+    public void SetSize(int screenWidth, int screenHeight)
     {
-        _limitedViewport.SetSize(width, height);
+        ScreenWidth = screenWidth;
+        ScreenHeight = screenHeight;
     }
 
-    public void CallHomeIfNeeded()
+    public void Dispose()
     {
-        if (Map != null && !Map.Initialized && Viewport.HasSize() && Map?.Extent != null)
-        {
-            Map.Home?.Invoke(Navigator!);
-            Map.Initialized = true;
-        }
+        Renderer.Dispose();
     }
 }

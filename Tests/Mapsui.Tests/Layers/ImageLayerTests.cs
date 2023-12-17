@@ -6,6 +6,7 @@ using Mapsui.Extensions;
 using Mapsui.Layers;
 using Mapsui.Providers;
 using NUnit.Framework;
+using NUnit.Framework.Legacy;
 
 namespace Mapsui.Tests.Layers;
 
@@ -45,13 +46,13 @@ public class ImageLayerTests
             waitHandle.Go();
         };
 
-        var fetchInfo = new FetchInfo(new MRect(-1, -1, 0, 0), 1, null, ChangeType.Discrete);
+        var fetchInfo = new FetchInfo(new MSection(new MRect(-1, -1, 0, 0), 1), null, ChangeType.Discrete);
 
         // act
         map.RefreshData(fetchInfo);
 
         // assert
         waitHandle.WaitOne();
-        Assert.AreEqual(ExceptionMessage, exception?.Message);
+        ClassicAssert.AreEqual(ExceptionMessage, exception?.Message);
     }
 }

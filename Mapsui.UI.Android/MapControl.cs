@@ -1,7 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
 using Android.Content;
 using Android.Graphics;
 using Android.OS;
@@ -12,8 +8,6 @@ using Mapsui.UI.Android.Extensions;
 using Mapsui.Utilities;
 using SkiaSharp.Views.Android;
 using Math = System.Math;
-
-#nullable enable
 
 namespace Mapsui.UI.Android;
 
@@ -26,8 +20,11 @@ public enum SkiaRenderMode
 internal class MapControlGestureListener : GestureDetector.SimpleOnGestureListener
 {
     public EventHandler<GestureDetector.FlingEventArgs>? Fling;
-
-    public override bool OnFling(MotionEvent? e1, MotionEvent? e2, float velocityX, float velocityY)
+#if NET7_0
+    public override bool OnFling(MotionEvent e1, MotionEvent e2, float velocityX, float velocityY)
+#else
+    public override bool OnFling(MotionEvent? e1, MotionEvent e2, float velocityX, float velocityY)
+#endif
     {
         if (Fling != null)
         {
@@ -134,7 +131,7 @@ public partial class MapControl : ViewGroup, IMapControl
             return;
 
         var position = GetScreenPosition(e.Event, this);
-        OnInfo(InvokeInfo(position, position, 2));
+        OnInfo(CreateMapInfoEventArgs(position, position, 2));
     }
 
     private void OnSingleTapped(object? sender, GestureDetector.SingleTapConfirmedEventArgs e)
@@ -143,7 +140,7 @@ public partial class MapControl : ViewGroup, IMapControl
             return;
 
         var position = GetScreenPosition(e.Event, this);
-        OnInfo(InvokeInfo(position, position, 1));
+        OnInfo(CreateMapInfoEventArgs(position, position, 1));
     }
 
     protected override void OnSizeChanged(int width, int height, int oldWidth, int oldHeight)
@@ -174,15 +171,20 @@ public partial class MapControl : ViewGroup, IMapControl
 
     public void OnFling(object? sender, GestureDetector.FlingEventArgs args)
     {
-        Navigator?.FlingWith(args.VelocityX / 10, args.VelocityY / 10, 1000);
+        Map.Navigator.Fling(args.VelocityX / 10, args.VelocityY / 10, 1000);
     }
 
     public void MapView_Touch(object? sender, TouchEventArgs args)
     {
-        if (_gestureDetector?.OnTouchEvent(args.Event) ?? false)
+        if (args.Event != null && (_gestureDetector?.OnTouchEvent(args.Event) ?? false))
             return;
 
         var touchPoints = GetScreenPositions(args.Event, this);
+
+        if (touchPoints.Count > 0 && HandleTouch(args, touchPoints.First()))
+        {
+            return;
+        }
 
         switch (args.Event?.Action)
         {
@@ -198,7 +200,7 @@ public partial class MapControl : ViewGroup, IMapControl
                 {
                     (_previousTouch, _previousRadius, _previousAngle) = GetPinchValues(touchPoints);
                     _mode = TouchMode.Zooming;
-                    _virtualRotation = Viewport.Rotation;
+                    _virtualRotation = Map.Navigator.Viewport.Rotation;
                 }
                 else
                 {
@@ -217,7 +219,7 @@ public partial class MapControl : ViewGroup, IMapControl
                 {
                     (_previousTouch, _previousRadius, _previousAngle) = GetPinchValues(touchPoints);
                     _mode = TouchMode.Zooming;
-                    _virtualRotation = Viewport.Rotation;
+                    _virtualRotation = Map.Navigator.Viewport.Rotation;
                 }
                 else
                 {
@@ -237,8 +239,7 @@ public partial class MapControl : ViewGroup, IMapControl
                             var touch = touchPoints.First();
                             if (_previousTouch != null)
                             {
-                                _viewport.Transform(touch, _previousTouch);
-                                RefreshGraphics();
+                                Map.Navigator.Drag(touch, _previousTouch);
                             }
                             _previousTouch = touch;
                         }
@@ -253,16 +254,15 @@ public partial class MapControl : ViewGroup, IMapControl
 
                             double rotationDelta = 0;
 
-                            if (Map?.RotationLock == false)
+                            if (Map.Navigator.RotationLock is false)
                             {
                                 _virtualRotation += angle - previousAngle;
 
                                 rotationDelta = RotationCalculations.CalculateRotationDeltaWithSnapping(
-                                    _virtualRotation, _viewport.Rotation, _unSnapRotationDegrees, _reSnapRotationDegrees);
+                                    _virtualRotation, Map.Navigator.Viewport.Rotation, _unSnapRotationDegrees, _reSnapRotationDegrees);
                             }
 
-                            _viewport.Transform(touch, previousTouch, radius / previousRadius, rotationDelta);
-                            RefreshGraphics();
+                            Map.Navigator.Pinch(touch, previousTouch, radius / previousRadius, rotationDelta);
 
                             (_previousTouch, _previousRadius, _previousAngle) = (touch, radius, angle);
 
@@ -272,6 +272,18 @@ public partial class MapControl : ViewGroup, IMapControl
                 }
                 break;
         }
+    }
+
+    private bool HandleTouch(TouchEventArgs e, MPoint location)
+    {
+        var action = e.Event?.Action;
+        return action switch
+        {
+            MotionEventActions.Down when HandleTouching(location, true, Math.Max(1, 0), false) => true,
+            MotionEventActions.Up when HandleTouched(location, true, 0, false) => true,
+            MotionEventActions.Move when HandleMoving(location, true, Math.Max(1, 0), false) => true,
+            _ => false
+        };
     }
 
     /// <summary>

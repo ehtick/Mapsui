@@ -1,4 +1,5 @@
 ﻿using System.IO;
+using System.Threading.Tasks;
 using Mapsui.Extensions;
 using Mapsui.Layers;
 using Mapsui.Nts;
@@ -16,7 +17,7 @@ using Mapsui.UI;
 
 namespace Mapsui.Samples.Common.Maps.Special;
 
-public class ShapefileTilingFilteringSample : IMapControlSample
+public class ShapefileTilingFilteringSample : ISample
 {
     static ShapefileTilingFilteringSample()
     {
@@ -27,10 +28,8 @@ public class ShapefileTilingFilteringSample : IMapControlSample
     public string Name => "Filtering on shapefile";
     public string Category => "Special";
 
-    public void Setup(IMapControl mapControl)
-    {
-        mapControl.Map = CreateMap();
-    }
+    public Task<Map> CreateMapAsync() => Task.FromResult(CreateMap());
+
 
     public static Map CreateMap()
     {
@@ -107,7 +106,7 @@ public class ShapefileTilingFilteringSample : IMapControlSample
         var bitmapId = typeof(ShapefileTileSample).LoadBitmapId(@"Images.icon.png");
         var cityMin = new SymbolStyle { BitmapId = bitmapId, SymbolScale = 0.5f };
         var cityMax = new SymbolStyle { BitmapId = bitmapId, SymbolScale = 1f };
-        return new GradientTheme("Population", 1000000, 5000000, cityMin, cityMax);
+        return new GradientTheme("POPULATION", 1000000, 5000000, cityMin, cityMax);
     }
 
     private static IThemeStyle CreateCountryTheme()
@@ -121,7 +120,7 @@ public class ShapefileTilingFilteringSample : IMapControlSample
         var max = new VectorStyle { Outline = new Pen { Color = Color.Black } };
 
         // Create theme using a density from 0 (min) to 400 (max)
-        return new GradientTheme("PopDens", 0, 400, min, max) { FillColorBlend = ColorBlend.Rainbow5 };
+        return new GradientTheme("POPDENS", 0, 400, min, max) { FillColorBlend = ColorBlend.Rainbow5 };
     }
 
     private static LabelStyle CreateCityLabelStyle()

@@ -1,10 +1,12 @@
-﻿using Mapsui.Layers;
+﻿using Mapsui.Extensions;
+using Mapsui.Layers;
 using Mapsui.Rendering;
 using Mapsui.Rendering.Skia.SkiaStyles;
 using Mapsui.Samples.Common.DataBuilders;
 using Mapsui.Styles;
 using Mapsui.Tiling;
 using Mapsui.UI;
+using Mapsui.Widgets;
 using SkiaSharp;
 using System;
 using System.Collections.Generic;
@@ -22,7 +24,7 @@ public class CustomStyle : IStyle
 public class SkiaCustomStyleRenderer : ISkiaStyleRenderer
 {
     public static Random Random = new(1);
-    public bool Draw(SKCanvas canvas, IReadOnlyViewport viewport, ILayer layer, IFeature feature, IStyle style, IRenderCache renderCache, long iteration)
+    public bool Draw(SKCanvas canvas, Viewport viewport, ILayer layer, IFeature feature, IStyle style, IRenderCache renderCache, long iteration)
     {
         if (feature is not PointFeature pointFeature) return false;
         var worldPoint = pointFeature.Point;
@@ -68,6 +70,8 @@ public class CustomStyleSample : IMapControlSample
         map.Layers.Add(OpenStreetMap.CreateTileLayer());
         map.Layers.Add(CreateStylesLayer(map.Extent));
 
+        map.Widgets.Add(new MapInfoWidget(map));
+
         return map;
     }
 
@@ -90,7 +94,7 @@ public class CustomStyleSample : IMapControlSample
         foreach (var point in randomPoints)
         {
             var feature = new PointFeature(point);
-            feature["Label"] = $"I'm no. {counter++} and, \nautsch, you hit me!";
+            feature["Label"] = $"I'm no. {counter++} and, autsch, you hit me!";
             feature.Styles.Add(style); // Here the custom style is set!
             feature.Styles.Add(SmalleDot());
             features.Add(feature);

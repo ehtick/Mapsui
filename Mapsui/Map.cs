@@ -5,14 +5,15 @@
 // This file was originally created by Morten Nielsen (www.iter.dk) as part of SharpMap
 
 using System;
+using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
+using Mapsui.Extensions;
 using Mapsui.Fetcher;
 using Mapsui.Layers;
 using Mapsui.Styles;
-using Mapsui.UI;
 using Mapsui.Widgets;
 
 namespace Mapsui;
@@ -21,13 +22,13 @@ namespace Mapsui;
 /// Map class
 /// </summary>
 /// <remarks>
-/// Map holds all map related infos like the target CRS, layers, widgets and so on.
+/// Map holds all map related info like the target CRS, layers, widgets and so on.
 /// </remarks>
-public class Map : INotifyPropertyChanged, IMap, IDisposable
+public class Map : INotifyPropertyChanged, IDisposable
 {
-    private LayerCollection _layers = new();
+    private LayerCollection _layers = [];
     private Color _backColor = Color.White;
-    private IViewportLimiter _limiter = new ViewportLimiter();
+    private IWidget[] _oldWidgets = [];
 
     /// <summary>
     /// Initializes a new map
@@ -35,61 +36,37 @@ public class Map : INotifyPropertyChanged, IMap, IDisposable
     public Map()
     {
         BackColor = Color.White;
-        Layers = new LayerCollection();
+        Layers = [];
+        Navigator.RefreshDataRequest += Navigator_RefreshDataRequest;
+        Navigator.ViewportChanged += Navigator_ViewportChanged;
     }
 
-    /// <summary>
-    /// To register if the initial Home call has been done.
-    /// </summary>
-    public bool Initialized { get; set; }
-
-    /// <summary>
-    /// When true the user can not pan (move) the map.
-    /// </summary>
-    public bool PanLock { get; set; }
-
-    /// <summary>
-    /// When true the user an not rotate the map
-    /// </summary>
-    public bool ZoomLock { get; set; }
-
-    /// <summary>
-    /// When true the user can not zoom into the map
-    /// </summary>
-    public bool RotationLock { get; set; }
+    private void Navigator_ViewportChanged(object? sender, ViewportChangedEventArgs e)
+    {
+        RefreshGraphics();
+    }
 
     /// <summary>
     /// List of Widgets belonging to map
     /// </summary>
-    public ConcurrentQueue<IWidget> Widgets { get; } = new();
+    public ConcurrentQueue<IWidget> Widgets { get; } = [];
 
     /// <summary>
-    /// Limit the extent to which the user can navigate
+    /// Coordinate reference system (projection type of map).
+    /// Default: "EPSG:3857" (SphericalMercator).
     /// </summary>
-    public IViewportLimiter Limiter
-    {
-        get => _limiter;
-        set
-        {
-            if (!_limiter.Equals(value))
-            {
-                _limiter = value;
-                OnPropertyChanged(nameof(Limiter));
-            }
-        }
-    }
-
-    /// <summary>
-    /// Projection type of Map. Normally in format like "EPSG:3857"
-    /// </summary>
-    public string? CRS { get; set; }
+    public string? CRS { get; set; } = "EPSG:3857";
 
     /// <summary>
     /// A collection of layers. The first layer in the list is drawn first, the last one on top.
     /// </summary>
     public LayerCollection Layers
     {
-        get => _layers;
+        get
+        {
+            AssureWidgetsConnected();
+            return _layers;
+        }
         private set
         {
             var tempLayers = _layers;
@@ -99,6 +76,36 @@ public class Map : INotifyPropertyChanged, IMap, IDisposable
             _layers = value;
             _layers.Changed += LayersCollectionChanged;
         }
+    }
+
+    private void AssureWidgetsConnected()
+    {
+        // it would be better if Widgets would be an observable collection then I wouldn't need this workaround
+        if (_oldWidgets.Length != Widgets.Count)
+        {
+            foreach (var widget in _oldWidgets)
+            {
+                if (widget is INotifyPropertyChanged propertyChanged)
+                {
+                    propertyChanged.PropertyChanged -= WidgetPropertyChanged;
+                }
+            }
+
+            _oldWidgets = [.. Widgets];
+
+            foreach (var widget in Widgets)
+            {
+                if (widget is INotifyPropertyChanged propertyChanged)
+                {
+                    propertyChanged.PropertyChanged += WidgetPropertyChanged;
+                }
+            }
+        }
+    }
+
+    private void WidgetPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        RefreshGraphics();
     }
 
     /// <summary>
@@ -135,11 +142,6 @@ public class Map : INotifyPropertyChanged, IMap, IDisposable
     }
 
     /// <summary>
-    /// List of all native resolutions of this map
-    /// </summary>
-    public IReadOnlyList<double> Resolutions { get; private set; } = new List<double>();
-
-    /// <summary>
     /// Called whenever a property changed
     /// </summary>
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -149,11 +151,63 @@ public class Map : INotifyPropertyChanged, IMap, IDisposable
     /// </summary>
     public event DataChangedEventHandler? DataChanged;
 
+    public event EventHandler? RefreshGraphicsRequest;
+
     /// <summary>
     /// Called whenever the map is clicked. The MapInfoEventArgs contain the features that were hit in
     /// the layers that have IsMapInfoLayer set to true. 
     /// </summary>
     public event EventHandler<MapInfoEventArgs>? Info;
+
+    /// <summary>
+    /// Handles all manipulations of the map viewport
+    /// </summary>
+    public Navigator Navigator { get; private set; } = new Navigator();
+
+    private void Navigator_RefreshDataRequest(object? sender, EventArgs e)
+    {
+        RefreshData(ChangeType.Discrete);
+    }
+
+    /// <summary>
+    /// Refresh data of the map and than repaint it
+    /// </summary>
+    public void Refresh(ChangeType changeType = ChangeType.Discrete)
+    {
+        RefreshData(changeType);
+        RefreshGraphics();
+    }
+
+    /// <summary>
+    /// Refresh data of Map, but don't paint it
+    /// </summary>
+    public void RefreshData(ChangeType changeType = ChangeType.Discrete)
+    {
+        if (Navigator.Viewport.ToExtent() is null)
+            return;
+        if (Navigator.Viewport.ToExtent().GetArea() <= 0)
+            return;
+
+        var fetchInfo = new FetchInfo(Navigator.Viewport.ToSection(), CRS, changeType);
+        RefreshData(fetchInfo);
+    }
+
+    public void RefreshGraphics()
+    {
+        RefreshGraphicsRequest?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void OnViewportSizeInitialized()
+    {
+        ViewportInitialized?.Invoke(this, EventArgs.Empty);
+    }
+
+
+    /// <summary>
+    /// Called when the viewport is initialized
+    /// </summary>
+    public event EventHandler? ViewportInitialized; //todo: Consider to use the Viewport PropertyChanged
+
 
     /// <summary>
     /// Abort fetching of all layers
@@ -214,8 +268,19 @@ public class Map : INotifyPropertyChanged, IMap, IDisposable
 
     private void LayersChanged()
     {
-        Resolutions = DetermineResolutions(Layers);
+        Navigator.DefaultResolutions = DetermineResolutions(Layers);
+        Navigator.DefaultZoomBounds = GetMinMaxResolution(Navigator.Resolutions);
+        Navigator.DefaultPanBounds = Extent?.Copy();
         OnPropertyChanged(nameof(Layers));
+    }
+
+    private static MMinMax? GetMinMaxResolution(IEnumerable<double>? resolutions)
+    {
+        if (resolutions == null || !resolutions.Any()) return null;
+        resolutions = resolutions.OrderByDescending(r => r).ToList();
+        var mostZoomedOut = resolutions.First();
+        var mostZoomedIn = resolutions.Last() * 0.5; // Divide by two to allow one extra level to zoom-in
+        return new MMinMax(mostZoomedOut, mostZoomedIn);
     }
 
     private static IReadOnlyList<double> DetermineResolutions(IEnumerable<ILayer> layers)
@@ -277,8 +342,6 @@ public class Map : INotifyPropertyChanged, IMap, IDisposable
         DataChanged?.Invoke(sender, e);
     }
 
-    public Action<INavigator> Home { get; set; } = n => n.NavigateToFullEnvelope();
-
     public IEnumerable<IWidget> GetWidgetsOfMapAndLayers()
     {
         return Widgets.Concat(Layers.Where(l => l.Enabled).Select(l => l.Attribution))
@@ -300,7 +363,7 @@ public class Map : INotifyPropertyChanged, IMap, IDisposable
     {
         foreach (var layer in Layers)
         {
-            // remove Event so that no memory leaks occour
+            // remove Event so that no memory leaks occur
             LayerRemoved(layer);
         }
 

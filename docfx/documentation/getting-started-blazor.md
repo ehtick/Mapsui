@@ -1,5 +1,5 @@
 
-# Mapsui Avalonia getting started
+# Mapsui Blazor getting started
 
 ### Step 1
 Create a new Blazor WebAssembly Application in your IDE.
@@ -15,9 +15,7 @@ PM> Install-Package Mapsui.Blazor -pre
 In Index.razor add this to the to Page.
 
 ```csharp
-@code {
-    private ElementReference? _mapControl;
-}
+@using Mapsui.UI.Blazor
 ```
 
 ```html
@@ -28,19 +26,44 @@ In Index.razor add this to the to Page.
         </div>
     </div>
 </div>
-```
 
+<style>
+    .canvas-container canvas {
+        width: 100%;
+        height: 80vh;
+    }
+</style>
+
+```
 ```csharp
-protected override void OnAfterRender(bool firstRender)
+@code 
 {
-  base.OnAfterRender(firstRender);
-  if (firstRender)
-  {
-      if (_mapControl != null)
-         _mapControl.Map?.Layers.Add(Mapsui.Tiling.OpenStreetMap.CreateTileLayer());
-  }
+    private MapControl? _mapControl;
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        base.OnAfterRender(firstRender);
+        if (firstRender)
+        {
+            if (_mapControl != null)
+                _mapControl.Map?.Layers.Add(Mapsui.Tiling.OpenStreetMap.CreateTileLayer());
+        }
+    }
 }
 ```
 
-### Step 4
+
+### Step 6
 Run it and you should see a map of the world.
+
+
+### Troubleshooting
+
+### Text is not displayed
+Add Follwing to the Blazor project, is a workaround that text is rendered.
+```xml
+   <ItemGroup>
+	<PackageReference Include="HarfBuzzSharp.NativeAssets.WebAssembly" Version="2.8.2.3" GeneratePathProperty="true" />
+    <NativeFileReference Include="$(PKGHarfBuzzSharp_NativeAssets_WebAssembly)\build\netstandard1.0\libHarfBuzzSharp.a\3.1.12\libHarfBuzzSharp.a" />
+  </ItemGroup>
+```	

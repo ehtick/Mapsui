@@ -24,15 +24,13 @@ namespace Mapsui.UI.Wpf;
 public partial class MapControl : Grid, IMapControl, IDisposable
 {
     private readonly Rectangle _selectRectangle = CreateSelectRectangle();
-    private MPoint? _currentMousePosition;
     private MPoint? _downMousePosition;
     private bool _mouseDown;
     private MPoint? _previousMousePosition;
     private bool _hasBeenManipulated;
     private double _virtualRotation;
     private readonly FlingTracker _flingTracker = new();
-
-    public MouseWheelAnimation MouseWheelAnimation { get; } = new();
+    private MPoint? _currentMousePosition;
 
     /// <summary>
     /// Fling is called, when user release mouse button or lift finger while moving with a certain speed, higher than speed of swipe 
@@ -93,7 +91,7 @@ public partial class MapControl : Grid, IMapControl, IDisposable
             StrokeThickness = 3,
             RadiusX = 0.5,
             RadiusY = 0.5,
-            StrokeDashArray = new DoubleCollection { 3.0 },
+            StrokeDashArray = [3.0],
             Opacity = 0.3,
             VerticalAlignment = VerticalAlignment.Top,
             HorizontalAlignment = HorizontalAlignment.Left,
@@ -123,6 +121,7 @@ public partial class MapControl : Grid, IMapControl, IDisposable
         };
     }
 
+    [Obsolete("Use Info and ILayerFeatureInfo")]
     public event EventHandler<FeatureInfoEventArgs>? FeatureInfo; // todo: Remove and add sample for alternative
 
     internal void InvalidateCanvas()
@@ -139,15 +138,9 @@ public partial class MapControl : Grid, IMapControl, IDisposable
 
     private void MapControlMouseWheel(object sender, MouseWheelEventArgs e)
     {
-        if (_map?.ZoomLock ?? true) return;
-        if (!Viewport.HasSize()) return;
-
+        var mouseWheelDelta = e.Delta;
         _currentMousePosition = e.GetPosition(this).ToMapsui();
-
-        var resolution = MouseWheelAnimation.GetResolution(e.Delta, _viewport, _map);
-        // Limit target resolution before animation to avoid an animation that is stuck on the max resolution, which would cause a needless delay
-        resolution = _map.Limiter.LimitResolution(resolution, Viewport.Width, Viewport.Height, _map.Resolutions, _map.Extent);
-        Navigator?.ZoomTo(resolution, _currentMousePosition, MouseWheelAnimation.Duration, MouseWheelAnimation.Easing);
+        Map.Navigator.MouseWheelZoom(mouseWheelDelta, _currentMousePosition);
     }
 
     private void MapControlSizeChanged(object sender, SizeChangedEventArgs e)
@@ -176,6 +169,9 @@ public partial class MapControl : Grid, IMapControl, IDisposable
 
     private void MapControlMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        if (HandleTouching(e.GetPosition(this).ToMapsui(), true, e.ClickCount, ShiftPressed))
+            return;
+
         var touchPosition = e.GetPosition(this).ToMapsui();
         _previousMousePosition = touchPosition;
         _downMousePosition = touchPosition;
@@ -193,19 +189,23 @@ public partial class MapControl : Grid, IMapControl, IDisposable
     private void MapControlMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
         var mousePosition = e.GetPosition(this).ToMapsui();
+        if (HandleTouched(mousePosition, true, e.ClickCount, ShiftPressed))
+            return;
 
         if (_previousMousePosition != null)
         {
             if (IsInBoxZoomMode())
             {
-                var previous = Viewport.ScreenToWorld(_previousMousePosition.X, _previousMousePosition.Y);
-                var current = Viewport.ScreenToWorld(mousePosition.X, mousePosition.Y);
+                var previous = Map.Navigator.Viewport.ScreenToWorld(_previousMousePosition.X, _previousMousePosition.Y);
+                var current = Map.Navigator.Viewport.ScreenToWorld(mousePosition.X, mousePosition.Y);
                 ZoomToBox(previous, current);
             }
             else if (_downMousePosition != null && IsClick(mousePosition, _downMousePosition))
             {
+#pragma warning disable CS0612 // Type or member is obsolete
                 HandleFeatureInfo(e);
-                OnInfo(InvokeInfo(mousePosition, _downMousePosition, e.ClickCount));
+#pragma warning restore CS0612 // Type or member is obsolete
+                OnInfo(CreateMapInfoEventArgs(mousePosition, _downMousePosition, e.ClickCount));
             }
         }
 
@@ -242,7 +242,7 @@ public partial class MapControl : Grid, IMapControl, IDisposable
         if (args.Handled)
             return true;
 
-        Navigator?.FlingWith(velocityX, velocityY, 1000);
+        Map.Navigator.Fling(velocityX, velocityY, 1000);
 
         return true;
     }
@@ -262,7 +262,7 @@ public partial class MapControl : Grid, IMapControl, IDisposable
             // todo: Pass the touchDown position. It needs to be set at touch down.
 
             // todo: Figure out how to do a number of taps for WPF
-            OnInfo(InvokeInfo(touchPosition, touchPosition, 1));
+            OnInfo(CreateMapInfoEventArgs(touchPosition, touchPosition, 1));
         }
     }
 
@@ -276,20 +276,19 @@ public partial class MapControl : Grid, IMapControl, IDisposable
         });
     }
 
+    [Obsolete]
     private void HandleFeatureInfo(MouseButtonEventArgs e)
     {
         if (FeatureInfo == null) return; // don't fetch if you the call back is not set.
 
         if (_downMousePosition == e.GetPosition(this).ToMapsui())
-            if (this.Map != null)
+            foreach (var layer in Map.Layers)
             {
-                foreach (var layer in Map.Layers)
-                {
-                    // ReSharper disable once SuspiciousTypeConversion.Global
-                    (layer as IFeatureInfo)?.GetFeatureInfo(Viewport, _downMousePosition.X, _downMousePosition.Y,
-                        OnFeatureInfo);
-                }
+                // ReSharper disable once SuspiciousTypeConversion.Global
+                (layer as IFeatureInfo)?.GetFeatureInfo(Map.Navigator.Viewport, _downMousePosition.X, _downMousePosition.Y,
+                    OnFeatureInfo);
             }
+
     }
 
     private void OnFeatureInfo(IDictionary<string, IEnumerable<IFeature>> features)
@@ -299,13 +298,16 @@ public partial class MapControl : Grid, IMapControl, IDisposable
 
     private void MapControlMouseMove(object sender, MouseEventArgs e)
     {
+        if (HandleMoving(e.GetPosition(this).ToMapsui(), e.LeftButton == MouseButtonState.Pressed, 0, ShiftPressed))
+            return;
+
         if (IsInBoxZoomMode())
         {
-            DrawBbox(e.GetPosition(this));
+            DrawRectangle(e.GetPosition(this));
             return;
         }
 
-        _currentMousePosition = e.GetPosition(this).ToMapsui(); //Needed for both MouseMove and MouseWheel event
+        _currentMousePosition = e.GetPosition(this).ToMapsui();
 
         if (_mouseDown)
         {
@@ -318,36 +320,15 @@ public partial class MapControl : Grid, IMapControl, IDisposable
             }
 
             _flingTracker.AddEvent(1, _currentMousePosition, DateTime.Now.Ticks);
-
-            _viewport.Transform(_currentMousePosition, _previousMousePosition);
-            RefreshGraphics();
+            Map.Navigator.Drag(_currentMousePosition, _previousMousePosition);
             _previousMousePosition = _currentMousePosition;
-        }
-        else
-        {
-            if (MouseWheelAnimation.IsAnimating())
-            {
-                // Disabled because not performing:
-                // Navigator.ZoomTo(_toResolution, _currentMousePosition, _mouseWheelAnimationDuration, Easing.QuarticOut);
-            }
-
         }
     }
 
     public void ZoomToBox(MPoint beginPoint, MPoint endPoint)
     {
-        var width = Math.Abs(endPoint.X - beginPoint.X);
-        var height = Math.Abs(endPoint.Y - beginPoint.Y);
-        if (width <= 0) return;
-        if (height <= 0) return;
-
-        ZoomHelper.ZoomToBoudingbox(beginPoint.X, beginPoint.Y, endPoint.X, endPoint.Y,
-            ActualWidth, ActualHeight, out var x, out var y, out var resolution);
-
-        Navigator?.NavigateTo(new MPoint(x, y), resolution, 384);
-
-        RefreshData();
-        RefreshGraphics();
+        var box = new MRect(beginPoint.X, beginPoint.Y, endPoint.X, endPoint.Y);
+        Map.Navigator.ZoomToBox(box, duration: 300); ;
         ClearBBoxDrawing();
     }
 
@@ -356,7 +337,7 @@ public partial class MapControl : Grid, IMapControl, IDisposable
         RunOnUIThread(() => _selectRectangle.Visibility = Visibility.Collapsed);
     }
 
-    private void DrawBbox(Point newPos)
+    private void DrawRectangle(Point newPos)
     {
         if (_mouseDown)
         {
@@ -397,7 +378,7 @@ public partial class MapControl : Grid, IMapControl, IDisposable
     private void OnManipulationStarted(object? sender, ManipulationStartedEventArgs e)
     {
         _hasBeenManipulated = false;
-        _virtualRotation = _viewport.Rotation;
+        _virtualRotation = Map.Navigator.Viewport.Rotation;
     }
 
     private void OnManipulationDelta(object? sender, ManipulationDeltaEventArgs e)
@@ -415,22 +396,21 @@ public partial class MapControl : Grid, IMapControl, IDisposable
 
         double rotationDelta = 0;
 
-        if (Map?.RotationLock == false)
+        if (Map.Navigator.RotationLock == false)
         {
             _virtualRotation += angle - prevAngle;
 
             rotationDelta = RotationCalculations.CalculateRotationDeltaWithSnapping(
-                _virtualRotation, _viewport.Rotation, _unSnapRotationDegrees, _reSnapRotationDegrees);
+                _virtualRotation, Map.Navigator.Viewport.Rotation, _unSnapRotationDegrees, _reSnapRotationDegrees);
         }
 
-        _viewport.Transform(center, previousCenter, radius / previousRadius, rotationDelta);
-        RefreshGraphics();
+        Map.Navigator.Pinch(center, previousCenter, radius / previousRadius, rotationDelta);
         e.Handled = true;
     }
 
     private double GetDeltaScale(XamlVector scale)
     {
-        if (_map?.ZoomLock ?? true) return 1;
+        if (Map.Navigator.ZoomLock) return 1;
         var deltaScale = (scale.X + scale.Y) / 2;
         if (Math.Abs(deltaScale) < Constants.Epsilon)
             return 1; // If there is no scaling the deltaScale will be 0.0 in Windows Phone (while it is 1.0 in wpf)
@@ -462,11 +442,10 @@ public partial class MapControl : Grid, IMapControl, IDisposable
 
     private float GetPixelDensity()
     {
-        var presentationSource = PresentationSource.FromVisual(this);
-        if (presentationSource == null) throw new Exception("PresentationSource is null");
-        var compositionTarget = presentationSource.CompositionTarget;
-        if (compositionTarget == null) throw new Exception("CompositionTarget is null");
-
+        var presentationSource = PresentationSource.FromVisual(this) 
+            ?? throw new Exception("PresentationSource is null");
+        var compositionTarget = presentationSource.CompositionTarget 
+            ?? throw new Exception("CompositionTarget is null");
         var matrix = compositionTarget.TransformToDevice;
 
         var dpiX = matrix.M11;
@@ -492,4 +471,6 @@ public partial class MapControl : Grid, IMapControl, IDisposable
         Dispose(true);
         GC.SuppressFinalize(this);
     }
+
+    public static bool ShiftPressed => Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift);
 }

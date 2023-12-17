@@ -4,6 +4,7 @@ using Mapsui.Providers;
 using Mapsui.Samples.Common.DataBuilders;
 using Mapsui.Styles;
 using Mapsui.Tiling;
+using Mapsui.Widgets;
 using System.Threading.Tasks;
 
 namespace Mapsui.Samples.Common.Maps.Projection;
@@ -12,6 +13,9 @@ public class PointProjectionSample : ISample
 {
     public string Name => "Point projection";
     public string Category => "Projection";
+
+    // The region below is used by docfx to include a code snippet in the generated documentation, search for #projectionsample
+    #region projectionsample
 
     public Task<Map> CreateMapAsync()
     {
@@ -30,7 +34,10 @@ public class PointProjectionSample : ISample
         };
         map.Layers.Add(OpenStreetMap.CreateTileLayer());
         map.Layers.Add(geometryLayer);
-        map.Home = n => n.NavigateTo(extent);
+        map.Navigator.ZoomToBox(extent);
+
+        map.Widgets.Add(new MapInfoWidget(map));
+
         return Task.FromResult(map);
     }
 
@@ -70,4 +77,6 @@ public class PointProjectionSample : ISample
             Opacity = 0.5f
         };
     }
+
+    #endregion
 }

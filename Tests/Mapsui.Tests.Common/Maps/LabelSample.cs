@@ -1,21 +1,17 @@
 ﻿using System.Collections.Generic;
+using System.Threading.Tasks;
 using Mapsui.Layers;
-using Mapsui.Providers;
 using Mapsui.Samples.Common;
 using Mapsui.Styles;
-using Mapsui.UI;
 
 namespace Mapsui.Tests.Common.Maps;
 
-public class LabelSample : IMapControlSample
+public class LabelSample : ISample
 {
     public string Name => "Label";
     public string Category => "Tests";
 
-    public void Setup(IMapControl mapControl)
-    {
-        mapControl.Map = CreateMap();
-    }
+    public Task<Map> CreateMapAsync() => Task.FromResult(CreateMap());
 
     public static Map CreateMap()
     {
@@ -24,8 +20,9 @@ public class LabelSample : IMapControlSample
         var map = new Map
         {
             BackColor = Color.FromString("WhiteSmoke"),
-            Home = n => n.NavigateTo(layer.Extent!.Grow(layer.Extent.Width * 2))
         };
+
+        map.Navigator.ZoomToBox(layer.Extent!.Grow(layer.Extent.Width * 2));
 
         map.Layers.Add(layer);
 
@@ -44,7 +41,7 @@ public class LabelSample : IMapControlSample
 
     private static IEnumerable<IFeature> CreateFeaturesWithLabels()
     {
-        var features = new List<IFeature>
+        return new List<IFeature>
         {
             new PointFeature(new MPoint(100, 100))
             {
@@ -81,7 +78,7 @@ public class LabelSample : IMapControlSample
             },
             new PointFeature(new MPoint(300, 200))
             {
-                Styles = new[]
+                Styles =
                 {
                     new LabelStyle
                     {
@@ -94,7 +91,7 @@ public class LabelSample : IMapControlSample
             },
             new PointFeature(new MPoint(300, 300))
             {
-                Styles = new[]
+                Styles =
                 {
                     new LabelStyle
                     {
@@ -107,7 +104,7 @@ public class LabelSample : IMapControlSample
             },
             new PointFeature(new MPoint(250, 150))
             {
-                Styles = new[]
+                Styles =
                 {
                     new LabelStyle
                     {
@@ -121,7 +118,7 @@ public class LabelSample : IMapControlSample
             },
             new PointFeature(new MPoint(250, 50))
             {
-                Styles = new[]
+                Styles =
                 {
                     new LabelStyle
                     {
@@ -135,7 +132,5 @@ public class LabelSample : IMapControlSample
                 }
             }
         };
-
-        return features;
     }
 }

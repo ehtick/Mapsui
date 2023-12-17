@@ -14,21 +14,12 @@ using Mapsui.Extensions;
 using Mapsui.Fetcher;
 using Mapsui.Logging;
 using Mapsui.Providers;
+using Mapsui.Styles;
 
 namespace Mapsui.Layers;
 
-public class ImageLayer : BaseLayer, IAsyncDataFetcher, ILayerDataSource<IProvider>, IDisposable, ILayer
+public class ImageLayer : BaseLayer, IAsyncDataFetcher, ILayerDataSource<IProvider>, IDisposable, ILayer, ILayerFeatureInfo
 {
-    protected override void Dispose(bool disposing)
-    {
-        if (disposing)
-        {
-            _startFetchTimer.Dispose();
-        }
-
-        base.Dispose(disposing);
-    }
-
     private class FeatureSets
     {
         public long TimeRequested { get; set; }
@@ -39,9 +30,21 @@ public class ImageLayer : BaseLayer, IAsyncDataFetcher, ILayerDataSource<IProvid
     private bool _needsUpdate = true;
     private FetchInfo? _fetchInfo;
     private List<FeatureSets> _sets = new();
-    private readonly Timer _startFetchTimer;
+    private readonly Timer? _startFetchTimer;
     private IProvider? _dataSource;
     private readonly int _numberOfFeaturesReturned;
+
+    public ImageLayer()
+    {
+        Style = new RasterStyle();
+        _startFetchTimer = new Timer(StartFetchTimerElapsed, null, Timeout.Infinite, Timeout.Infinite);
+        _numberOfFeaturesReturned = 1;
+    }
+
+    public ImageLayer(string layerName) : this()
+    {
+        Name = layerName;
+    }
 
     /// <summary>
     /// Delay before fetching a new wms image from the server
@@ -63,18 +66,13 @@ public class ImageLayer : BaseLayer, IAsyncDataFetcher, ILayerDataSource<IProvid
         }
     }
 
-    public ImageLayer(string layerName)
-    {
-        Name = layerName;
-        _startFetchTimer = new Timer(StartFetchTimerElapsed, null, Timeout.Infinite, Timeout.Infinite);
-        _numberOfFeaturesReturned = 1;
-    }
-
     private void StartFetchTimerElapsed(object? state)
     {
-        if (_fetchInfo?.Extent == null) return;
-        if (double.IsNaN(_fetchInfo.Resolution)) return;
-        StartNewFetch(_fetchInfo);
+        var fetchInfo = _fetchInfo;
+
+        if (fetchInfo?.Section.Extent == null) return;
+        if (double.IsNaN(fetchInfo.Section.Resolution)) return;
+        StartNewFetch(fetchInfo);
     }
 
     public override IEnumerable<IFeature> GetFeatures(MRect box, double resolution)
@@ -122,7 +120,7 @@ public class ImageLayer : BaseLayer, IAsyncDataFetcher, ILayerDataSource<IProvid
             return;
         }
 
-        _startFetchTimer.Change(FetchDelay, Timeout.Infinite);
+        _startFetchTimer?.Change(FetchDelay, Timeout.Infinite);
     }
 
     private void StartNewFetch(FetchInfo fetchInfo)
@@ -189,5 +187,25 @@ public class ImageLayer : BaseLayer, IAsyncDataFetcher, ILayerDataSource<IProvid
         {
             cache.Features = new List<RasterFeature>();
         }
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _startFetchTimer?.Dispose();
+        }
+
+        base.Dispose(disposing);
+    }
+
+    public async Task<IDictionary<string, IEnumerable<IFeature>>> GetFeatureInfoAsync(Viewport viewport, double screenX, double screenY)
+    {
+        if (DataSource is ILayerFeatureInfo featureInfo)
+        {
+            return await featureInfo.GetFeatureInfoAsync(viewport, screenX, screenY).ConfigureAwait(false);
+        }
+
+        return new Dictionary<string, IEnumerable<IFeature>>();
     }
 }

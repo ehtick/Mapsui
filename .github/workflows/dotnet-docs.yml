@@ -1,5 +1,6 @@
 name: Build Website
-
+env:
+  PUBLISH_DIR: website/Samples/
 on:
   push:
     branches:  
@@ -18,10 +19,24 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v3
       with:
-        fetch-depth: 0      
+        fetch-depth: 0 
+    # .Net 8 update     
+    - name: Setup .NET 8 SDK
+      uses: actions/setup-dotnet@v3
+      with:
+         dotnet-version: |
+           8.0.x
+         include-prerelease: true
+    - name: install wasm-tools
+      run: dotnet workload install wasm-tools
     - name: Run DocFx
       # Use a .cmd so this script can be run locally for testing
-      run: docfx\build-site.cmd      
+      run: docfx\build-site.cmd
+      # build blazor samples to website/samples/
+    - name: Build Blazor Website Sample
+      shell: pwsh
+      run: |
+        ./Scripts/BuildSamplesWebsite.ps1     
     - name: Upload artifact
       uses: actions/upload-pages-artifact@v1
       with:
